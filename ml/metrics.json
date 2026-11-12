@@ -1,0 +1,766 @@
+{
+  "model_version": "lr-synthetic-20261112",
+  "data": {
+    "source": "synthetic",
+    "seed": 20261112,
+    "accounts": 200000,
+    "dropper_share": 0.02,
+    "test_accounts": 40000,
+    "test_droppers": 813,
+    "test_honest": 39187
+  },
+  "auc": 0.978751958902956,
+  "thresholds": {
+    "soft": 0.3984,
+    "warn": 0.8045,
+    "hold": 0.9477
+  },
+  "account_level": [
+    {
+      "threshold": "warn",
+      "value": 0.8045,
+      "droppers_found": 0.8130381303813038,
+      "honest_flagged": 0.021639829535305077,
+      "precision": 0.43399304303774067
+    },
+    {
+      "threshold": "hold",
+      "value": 0.9477,
+      "droppers_found": 0.6875768757687577,
+      "honest_flagged": 0.003240870696914793,
+      "precision": 0.8123741694366944
+    }
+  ],
+  "by_kind": [
+    {
+      "kind": "transit",
+      "is_dropper": false,
+      "count": 2731,
+      "above_warn": 0.11644086415232516,
+      "above_hold": 0.010984987184181618
+    },
+    {
+      "kind": "regular",
+      "is_dropper": false,
+      "count": 28188,
+      "above_warn": 0.00007095217823187172,
+      "above_hold": 0
+    },
+    {
+      "kind": "seller",
+      "is_dropper": false,
+      "count": 3135,
+      "above_warn": 0.09920255183413078,
+      "above_hold": 0.023923444976076555
+    },
+    {
+      "kind": "newcomer",
+      "is_dropper": false,
+      "count": 3990,
+      "above_warn": 0.04987468671679198,
+      "above_hold": 0.005263157894736842
+    },
+    {
+      "kind": "household",
+      "is_dropper": false,
+      "count": 1143,
+      "above_warn": 0.015748031496062992,
+      "above_hold": 0.0008748906386701663
+    },
+    {
+      "kind": "drop_careful",
+      "is_dropper": true,
+      "count": 86,
+      "above_warn": 0.1511627906976744,
+      "above_hold": 0.05813953488372093
+    },
+    {
+      "kind": "drop_fresh",
+      "is_dropper": true,
+      "count": 429,
+      "above_warn": 1,
+      "above_hold": 0.9976689976689976
+    },
+    {
+      "kind": "drop_bought",
+      "is_dropper": true,
+      "count": 198,
+      "above_warn": 0.7878787878787878,
+      "above_hold": 0.46464646464646464
+    },
+    {
+      "kind": "drop_first_use",
+      "is_dropper": true,
+      "count": 100,
+      "above_warn": 0.63,
+      "above_hold": 0.34
+    }
+  ],
+  "transfer_level": {
+    "assumptions": {
+      "fraud": {
+        "on_call": 0.7,
+        "first_transfer": 0.95,
+        "ratio_median": 5
+      },
+      "honest": {
+        "on_call": 0.02,
+        "first_transfer": 0.25,
+        "ratio_median": 1
+      }
+    },
+    "with_call_signal": {
+      "fraud": {
+        "warn": 0.14981549815498155,
+        "hold": 0.7727552275522755,
+        "total": 16260
+      },
+      "honest": {
+        "warn": 0.01926659351315487,
+        "hold": 0.003266389363819634,
+        "total": 39187
+      }
+    },
+    "without_call_signal": {
+      "fraud": {
+        "warn": 0.12546125461254612,
+        "hold": 0.6875768757687577,
+        "total": 16260
+      },
+      "honest": {
+        "warn": 0.01839895883839028,
+        "hold": 0.003240870696914793,
+        "total": 39187
+      }
+    }
+  },
+  "roc": [
+    {
+      "threshold": 0,
+      "droppers_found": 1,
+      "honest_flagged": 1
+    },
+    {
+      "threshold": 0.01,
+      "droppers_found": 1,
+      "honest_flagged": 0.6114527777068925
+    },
+    {
+      "threshold": 0.02,
+      "droppers_found": 0.998769987699877,
+      "honest_flagged": 0.46451629366881875
+    },
+    {
+      "threshold": 0.03,
+      "droppers_found": 0.996309963099631,
+      "honest_flagged": 0.39661112103503715
+    },
+    {
+      "threshold": 0.04,
+      "droppers_found": 0.993849938499385,
+      "honest_flagged": 0.35305075662847374
+    },
+    {
+      "threshold": 0.05,
+      "droppers_found": 0.992619926199262,
+      "honest_flagged": 0.3237808456886212
+    },
+    {
+      "threshold": 0.06,
+      "droppers_found": 0.991389913899139,
+      "honest_flagged": 0.29981881746497563
+    },
+    {
+      "threshold": 0.07,
+      "droppers_found": 0.990159901599016,
+      "honest_flagged": 0.2803735932834869
+    },
+    {
+      "threshold": 0.08,
+      "droppers_found": 0.9876998769987699,
+      "honest_flagged": 0.264475463801771
+    },
+    {
+      "threshold": 0.09,
+      "droppers_found": 0.9876998769987699,
+      "honest_flagged": 0.25171613034935053
+    },
+    {
+      "threshold": 0.1,
+      "droppers_found": 0.985239852398524,
+      "honest_flagged": 0.24053895424503025
+    },
+    {
+      "threshold": 0.11,
+      "droppers_found": 0.982779827798278,
+      "honest_flagged": 0.2310970474902391
+    },
+    {
+      "threshold": 0.12,
+      "droppers_found": 0.982779827798278,
+      "honest_flagged": 0.22259933141092708
+    },
+    {
+      "threshold": 0.13,
+      "droppers_found": 0.982779827798278,
+      "honest_flagged": 0.21425472733304413
+    },
+    {
+      "threshold": 0.14,
+      "droppers_found": 0.9790897908979089,
+      "honest_flagged": 0.20741572460254676
+    },
+    {
+      "threshold": 0.15,
+      "droppers_found": 0.972939729397294,
+      "honest_flagged": 0.1999387551994284
+    },
+    {
+      "threshold": 0.16,
+      "droppers_found": 0.972939729397294,
+      "honest_flagged": 0.1934570138055988
+    },
+    {
+      "threshold": 0.17,
+      "droppers_found": 0.9704797047970479,
+      "honest_flagged": 0.18791946308724833
+    },
+    {
+      "threshold": 0.18,
+      "droppers_found": 0.9692496924969249,
+      "honest_flagged": 0.18227983770127848
+    },
+    {
+      "threshold": 0.19,
+      "droppers_found": 0.9692496924969249,
+      "honest_flagged": 0.17722714165411999
+    },
+    {
+      "threshold": 0.2,
+      "droppers_found": 0.964329643296433,
+      "honest_flagged": 0.17230203894148569
+    },
+    {
+      "threshold": 0.21,
+      "droppers_found": 0.9630996309963099,
+      "honest_flagged": 0.16765764156480464
+    },
+    {
+      "threshold": 0.22,
+      "droppers_found": 0.956949569495695,
+      "honest_flagged": 0.16270702018526553
+    },
+    {
+      "threshold": 0.23,
+      "droppers_found": 0.956949569495695,
+      "honest_flagged": 0.15790951080715543
+    },
+    {
+      "threshold": 0.24,
+      "droppers_found": 0.955719557195572,
+      "honest_flagged": 0.1533416694311889
+    },
+    {
+      "threshold": 0.25,
+      "droppers_found": 0.955719557195572,
+      "honest_flagged": 0.14999872406665476
+    },
+    {
+      "threshold": 0.26,
+      "droppers_found": 0.9520295202952029,
+      "honest_flagged": 0.14594125602878505
+    },
+    {
+      "threshold": 0.27,
+      "droppers_found": 0.95079950799508,
+      "honest_flagged": 0.14193482532472504
+    },
+    {
+      "threshold": 0.28,
+      "droppers_found": 0.949569495694957,
+      "honest_flagged": 0.13836221195804732
+    },
+    {
+      "threshold": 0.29,
+      "droppers_found": 0.947109471094711,
+      "honest_flagged": 0.13450889325541635
+    },
+    {
+      "threshold": 0.3,
+      "droppers_found": 0.947109471094711,
+      "honest_flagged": 0.1309873172225483
+    },
+    {
+      "threshold": 0.31,
+      "droppers_found": 0.9458794587945879,
+      "honest_flagged": 0.127823002526348
+    },
+    {
+      "threshold": 0.32,
+      "droppers_found": 0.942189421894219,
+      "honest_flagged": 0.12476076249776712
+    },
+    {
+      "threshold": 0.33,
+      "droppers_found": 0.939729397293973,
+      "honest_flagged": 0.1214433358001378
+    },
+    {
+      "threshold": 0.34,
+      "droppers_found": 0.939729397293973,
+      "honest_flagged": 0.1180748717686988
+    },
+    {
+      "threshold": 0.35,
+      "droppers_found": 0.9360393603936039,
+      "honest_flagged": 0.11552300507821471
+    },
+    {
+      "threshold": 0.36,
+      "droppers_found": 0.932349323493235,
+      "honest_flagged": 0.1127669890524919
+    },
+    {
+      "threshold": 0.37,
+      "droppers_found": 0.9298892988929889,
+      "honest_flagged": 0.11021512236200781
+    },
+    {
+      "threshold": 0.38,
+      "droppers_found": 0.9298892988929889,
+      "honest_flagged": 0.10730599433485595
+    },
+    {
+      "threshold": 0.39,
+      "droppers_found": 0.9261992619926199,
+      "honest_flagged": 0.10442238497460893
+    },
+    {
+      "threshold": 0.4,
+      "droppers_found": 0.9261992619926199,
+      "honest_flagged": 0.10174292494960063
+    },
+    {
+      "threshold": 0.41,
+      "droppers_found": 0.9249692496924969,
+      "honest_flagged": 0.0987317222548294
+    },
+    {
+      "threshold": 0.42,
+      "droppers_found": 0.923739237392374,
+      "honest_flagged": 0.09595018756220175
+    },
+    {
+      "threshold": 0.43,
+      "droppers_found": 0.922509225092251,
+      "honest_flagged": 0.09304105953504989
+    },
+    {
+      "threshold": 0.44,
+      "droppers_found": 0.9200492004920049,
+      "honest_flagged": 0.09054023017837548
+    },
+    {
+      "threshold": 0.45,
+      "droppers_found": 0.915129151291513,
+      "honest_flagged": 0.08852425549289306
+    },
+    {
+      "threshold": 0.46,
+      "droppers_found": 0.9138991389913899,
+      "honest_flagged": 0.08604894480312349
+    },
+    {
+      "threshold": 0.47,
+      "droppers_found": 0.9102091020910209,
+      "honest_flagged": 0.08326741011049582
+    },
+    {
+      "threshold": 0.48,
+      "droppers_found": 0.9077490774907749,
+      "honest_flagged": 0.08089417408834562
+    },
+    {
+      "threshold": 0.49,
+      "droppers_found": 0.9077490774907749,
+      "honest_flagged": 0.07875060606833899
+    },
+    {
+      "threshold": 0.5,
+      "droppers_found": 0.906519065190652,
+      "honest_flagged": 0.07653048204761784
+    },
+    {
+      "threshold": 0.51,
+      "droppers_found": 0.9028290282902829,
+      "honest_flagged": 0.07461658202975477
+    },
+    {
+      "threshold": 0.52,
+      "droppers_found": 0.897908979089791,
+      "honest_flagged": 0.07224334600760456
+    },
+    {
+      "threshold": 0.53,
+      "droppers_found": 0.897908979089791,
+      "honest_flagged": 0.07025288998902697
+    },
+    {
+      "threshold": 0.54,
+      "droppers_found": 0.897908979089791,
+      "honest_flagged": 0.06816035930283001
+    },
+    {
+      "threshold": 0.55,
+      "droppers_found": 0.897908979089791,
+      "honest_flagged": 0.06616990328425243
+    },
+    {
+      "threshold": 0.56,
+      "droppers_found": 0.8942189421894219,
+      "honest_flagged": 0.06410289126496031
+    },
+    {
+      "threshold": 0.57,
+      "droppers_found": 0.8942189421894219,
+      "honest_flagged": 0.062240028580906936
+    },
+    {
+      "threshold": 0.58,
+      "droppers_found": 0.8929889298892989,
+      "honest_flagged": 0.06045372189756807
+    },
+    {
+      "threshold": 0.59,
+      "droppers_found": 0.8929889298892989,
+      "honest_flagged": 0.058539821879705
+    },
+    {
+      "threshold": 0.6,
+      "droppers_found": 0.8917589175891759,
+      "honest_flagged": 0.056727996529461304
+    },
+    {
+      "threshold": 0.61,
+      "droppers_found": 0.8917589175891759,
+      "honest_flagged": 0.05463546584326435
+    },
+    {
+      "threshold": 0.62,
+      "droppers_found": 0.8868388683886839,
+      "honest_flagged": 0.053053308495164216
+    },
+    {
+      "threshold": 0.63,
+      "droppers_found": 0.8831488314883149,
+      "honest_flagged": 0.05139459514634955
+    },
+    {
+      "threshold": 0.64,
+      "droppers_found": 0.8819188191881919,
+      "honest_flagged": 0.049148952458723555
+    },
+    {
+      "threshold": 0.65,
+      "droppers_found": 0.8806888068880688,
+      "honest_flagged": 0.04756679511062342
+    },
+    {
+      "threshold": 0.66,
+      "droppers_found": 0.8794587945879458,
+      "honest_flagged": 0.04588256309490392
+    },
+    {
+      "threshold": 0.67,
+      "droppers_found": 0.8733087330873309,
+      "honest_flagged": 0.04394314441013601
+    },
+    {
+      "threshold": 0.68,
+      "droppers_found": 0.8671586715867159,
+      "honest_flagged": 0.04223339372751168
+    },
+    {
+      "threshold": 0.69,
+      "droppers_found": 0.8659286592865929,
+      "honest_flagged": 0.040242937708934085
+    },
+    {
+      "threshold": 0.7,
+      "droppers_found": 0.8610086100861009,
+      "honest_flagged": 0.0382524816903565
+    },
+    {
+      "threshold": 0.71,
+      "droppers_found": 0.8573185731857319,
+      "honest_flagged": 0.03654273100773216
+    },
+    {
+      "threshold": 0.72,
+      "droppers_found": 0.8523985239852399,
+      "honest_flagged": 0.03460331232296425
+    },
+    {
+      "threshold": 0.73,
+      "droppers_found": 0.8511685116851169,
+      "honest_flagged": 0.03299563630795927
+    },
+    {
+      "threshold": 0.74,
+      "droppers_found": 0.8462484624846248,
+      "honest_flagged": 0.03171970296271723
+    },
+    {
+      "threshold": 0.75,
+      "droppers_found": 0.8413284132841329,
+      "honest_flagged": 0.030392732283665503
+    },
+    {
+      "threshold": 0.76,
+      "droppers_found": 0.8388683886838868,
+      "honest_flagged": 0.028785056268660524
+    },
+    {
+      "threshold": 0.77,
+      "droppers_found": 0.8314883148831488,
+      "honest_flagged": 0.02699874958532166
+    },
+    {
+      "threshold": 0.78,
+      "droppers_found": 0.8216482164821648,
+      "honest_flagged": 0.025288998902697323
+    },
+    {
+      "threshold": 0.79,
+      "droppers_found": 0.8191881918819188,
+      "honest_flagged": 0.023706841554597187
+    },
+    {
+      "threshold": 0.8,
+      "droppers_found": 0.8154981549815498,
+      "honest_flagged": 0.022150202873401893
+    },
+    {
+      "threshold": 0.81,
+      "droppers_found": 0.8118081180811808,
+      "honest_flagged": 0.020746676193635644
+    },
+    {
+      "threshold": 0.82,
+      "droppers_found": 0.8093480934809348,
+      "honest_flagged": 0.019368668180774238
+    },
+    {
+      "threshold": 0.83,
+      "droppers_found": 0.8031980319803198,
+      "honest_flagged": 0.018143772169341873
+    },
+    {
+      "threshold": 0.84,
+      "droppers_found": 0.7970479704797048,
+      "honest_flagged": 0.01663817082195626
+    },
+    {
+      "threshold": 0.85,
+      "droppers_found": 0.7921279212792128,
+      "honest_flagged": 0.014775308137902876
+    },
+    {
+      "threshold": 0.86,
+      "droppers_found": 0.7859778597785978,
+      "honest_flagged": 0.013218669456707582
+    },
+    {
+      "threshold": 0.87,
+      "droppers_found": 0.7761377613776138,
+      "honest_flagged": 0.011917217444560696
+    },
+    {
+      "threshold": 0.88,
+      "droppers_found": 0.7687576875768758,
+      "honest_flagged": 0.010641284099318651
+    },
+    {
+      "threshold": 0.89,
+      "droppers_found": 0.7662976629766297,
+      "honest_flagged": 0.009543981422410494
+    },
+    {
+      "threshold": 0.9,
+      "droppers_found": 0.7503075030750308,
+      "honest_flagged": 0.0085487534131217
+    },
+    {
+      "threshold": 0.91,
+      "droppers_found": 0.7453874538745388,
+      "honest_flagged": 0.007349376068594177
+    },
+    {
+      "threshold": 0.92,
+      "droppers_found": 0.7306273062730627,
+      "honest_flagged": 0.006226554724781177
+    },
+    {
+      "threshold": 0.93,
+      "droppers_found": 0.7146371463714637,
+      "honest_flagged": 0.0048230280450149285
+    },
+    {
+      "threshold": 0.94,
+      "droppers_found": 0.7047970479704797,
+      "honest_flagged": 0.0039043560364406564
+    },
+    {
+      "threshold": 0.95,
+      "droppers_found": 0.6863468634686347,
+      "honest_flagged": 0.0031643146962002707
+    },
+    {
+      "threshold": 0.96,
+      "droppers_found": 0.6580565805658056,
+      "honest_flagged": 0.002092530686196953
+    },
+    {
+      "threshold": 0.97,
+      "droppers_found": 0.6236162361623616,
+      "honest_flagged": 0.001173858677622681
+    },
+    {
+      "threshold": 0.98,
+      "droppers_found": 0.5953259532595326,
+      "honest_flagged": 0.0006634853395258632
+    },
+    {
+      "threshold": 0.99,
+      "droppers_found": 0.5350553505535055,
+      "honest_flagged": 0.00012759333452420446
+    },
+    {
+      "threshold": 1,
+      "droppers_found": 0,
+      "honest_flagged": 0
+    }
+  ],
+  "histogram": [
+    {
+      "from": 0,
+      "to": 0.05,
+      "honest_share": 0.6762191543113788,
+      "dropper_share": 0.007380073800738007
+    },
+    {
+      "from": 0.05,
+      "to": 0.1,
+      "honest_share": 0.08324189144359098,
+      "dropper_share": 0.007380073800738007
+    },
+    {
+      "from": 0.1,
+      "to": 0.15,
+      "honest_share": 0.04060019904560186,
+      "dropper_share": 0.012300123001230012
+    },
+    {
+      "from": 0.15,
+      "to": 0.2,
+      "honest_share": 0.027636716257942687,
+      "dropper_share": 0.008610086100861008
+    },
+    {
+      "from": 0.2,
+      "to": 0.25,
+      "honest_share": 0.022303314874830938,
+      "dropper_share": 0.008610086100861008
+    },
+    {
+      "from": 0.25,
+      "to": 0.3,
+      "honest_share": 0.019011406844106463,
+      "dropper_share": 0.008610086100861008
+    },
+    {
+      "from": 0.3,
+      "to": 0.35,
+      "honest_share": 0.01546431214433358,
+      "dropper_share": 0.01107011070110701
+    },
+    {
+      "from": 0.35,
+      "to": 0.4,
+      "honest_share": 0.013780080128614081,
+      "dropper_share": 0.00984009840098401
+    },
+    {
+      "from": 0.4,
+      "to": 0.45,
+      "honest_share": 0.013218669456707582,
+      "dropper_share": 0.01107011070110701
+    },
+    {
+      "from": 0.45,
+      "to": 0.5,
+      "honest_share": 0.011993773445275219,
+      "dropper_share": 0.008610086100861008
+    },
+    {
+      "from": 0.5,
+      "to": 0.55,
+      "honest_share": 0.010360578763365403,
+      "dropper_share": 0.008610086100861008
+    },
+    {
+      "from": 0.55,
+      "to": 0.6,
+      "honest_share": 0.00944190675479113,
+      "dropper_share": 0.006150061500615006
+    },
+    {
+      "from": 0.6,
+      "to": 0.65,
+      "honest_share": 0.00916120141883788,
+      "dropper_share": 0.01107011070110701
+    },
+    {
+      "from": 0.65,
+      "to": 0.7,
+      "honest_share": 0.009314313420266925,
+      "dropper_share": 0.01968019680196802
+    },
+    {
+      "from": 0.7,
+      "to": 0.75,
+      "honest_share": 0.007859749406690994,
+      "dropper_share": 0.01968019680196802
+    },
+    {
+      "from": 0.75,
+      "to": 0.8,
+      "honest_share": 0.008242529410263608,
+      "dropper_share": 0.025830258302583026
+    },
+    {
+      "from": 0.8,
+      "to": 0.85,
+      "honest_share": 0.0073748947354990175,
+      "dropper_share": 0.023370233702337023
+    },
+    {
+      "from": 0.85,
+      "to": 0.9,
+      "honest_share": 0.006226554724781177,
+      "dropper_share": 0.041820418204182044
+    },
+    {
+      "from": 0.9,
+      "to": 0.95,
+      "honest_share": 0.005384438716921428,
+      "dropper_share": 0.06396063960639606
+    },
+    {
+      "from": 0.95,
+      "to": 1,
+      "honest_share": 0.0031643146962002707,
+      "dropper_share": 0.6863468634686347
+    }
+  ]
+}

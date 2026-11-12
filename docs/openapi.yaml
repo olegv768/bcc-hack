@@ -1,0 +1,382 @@
+openapi: 3.0.3
+info:
+  title: Сервис оценки получателя перевода
+  version: 0.1.0
+  description: |
+    Банк вызывает `POST /score` перед отправкой перевода и получает риск получателя,
+    причины на понятном языке и рекомендацию: пропустить, предупредить клиента или придержать перевод.
+    Счета, по которым была рекомендация «предупредить» или «придержать», доступны аналитику
+    через `GET /flagged` (JSON) и `GET /flagged.csv` (файл).
+
+    Сервис считает оценку локально и не обращается к внешним системам.
+servers:
+  - url: http://127.0.0.1:8787
+    description: Локальный запуск (npm run service)
+security:
+  - ApiKey: []
+  - {}
+paths:
+  /score:
+    post:
+      summary: Оценить получателя перевода
+      operationId: score
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScoreRequest'
+            example:
+              transfer_id: tr_20261112_000123
+              lang: ru
+              recipient:
+                account_id: tok_02d9fc
+                account_age_days: 4
+                unrelated_senders_7d: 8
+                fast_outflow_share_7d: 0.92
+                shared_device_accounts: 3
+              context:
+                amount: 450000
+                sender_on_call: true
+                first_transfer_to_recipient: true
+                amount_to_typical_ratio: 18
+      responses:
+        '200':
+          description: Оценка и рекомендация
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoreResponse'
+              example:
+                request_id: 0b1f5a52-6f0e-4c58-9f1c-0f6a3f1f2a77
+                transfer_id: tr_20261112_000123
+                risk: 0.9998
+                risk_level: high
+                action: hold
+                reasons:
+                  - code: FAST_OUTFLOW
+                    text: 92% поступлений уходит со счёта в течение часа
+                    contribution: 4.98
+                  - code: NEW_ACCOUNT
+                    text: Счёт получателя открыт 4 дн. назад
+                    contribution: 3.4
+                  - code: ON_CALL
+                    text: Клиент во время перевода разговаривает по телефону
+                    contribution: null
+                client_message:
+                  title: Перевод приостановлен на проверку
+                  body: Перевод похож на мошенническую схему. Деньги остались на вашем счёте.
+                contributions:
+                  account_age_days: 3.4
+                  unrelated_senders_7d: 1.61
+                  fast_outflow_share_7d: 4.98
+                  shared_device_accounts: 2.32
+                missing_features: []
+                model_version: lr-synthetic-20261112
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /flagged:
+    get:
+      summary: Помеченные счета для аналитика (JSON)
+      operationId: listFlagged
+      parameters:
+        - $ref: '#/components/parameters/since'
+        - $ref: '#/components/parameters/min_risk'
+        - $ref: '#/components/parameters/action'
+      responses:
+        '200':
+          description: Счета, отсортированные по убыванию риска
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FlaggedAccount'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /flagged.csv:
+    get:
+      summary: Помеченные счета для аналитика (CSV-файл)
+      description: |
+        Те же данные, что в `GET /flagged`, в кодировке UTF-8 с BOM. Колонки: account_id, max_risk,
+        last_action, flagged_transfers, flagged_amount, first_flagged_at, last_flagged_at, reason_codes,
+        reasons, account_age_days, unrelated_senders_7d, fast_outflow_share_7d, shared_device_accounts,
+        model_version.
+      operationId: exportFlaggedCsv
+      parameters:
+        - $ref: '#/components/parameters/since'
+        - $ref: '#/components/parameters/min_risk'
+        - $ref: '#/components/parameters/action'
+        - name: separator
+          in: query
+          description: Разделитель колонок. `semicolon` — для Excel с русскими региональными настройками.
+          schema:
+            type: string
+            enum: [comma, semicolon]
+            default: comma
+      responses:
+        '200':
+          description: CSV-файл
+          content:
+            text/csv:
+              schema:
+                type: string
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /health:
+    get:
+      summary: Проверка, что сервис работает
+      operationId: health
+      security: []
+      responses:
+        '200':
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  model_version:
+                    type: string
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Обязателен, если сервис запущен с переменной SCORE_API_KEY.
+  parameters:
+    since:
+      name: since
+      in: query
+      description: Только счета, помеченные не раньше этого момента (ISO 8601, UTC).
+      schema:
+        type: string
+        format: date-time
+    min_risk:
+      name: min_risk
+      in: query
+      description: Только счета с риском не ниже указанного.
+      schema:
+        type: number
+        minimum: 0
+        maximum: 1
+    action:
+      name: action
+      in: query
+      description: Только счета с такой последней рекомендацией.
+      schema:
+        type: string
+        enum: [warn, hold]
+  responses:
+    InvalidRequest:
+      description: Запрос не прошёл проверку
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Нет или неверный X-API-Key
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    ScoreRequest:
+      type: object
+      required: [recipient, context]
+      properties:
+        transfer_id:
+          type: string
+          maxLength: 100
+          description: Идентификатор перевода в системе банка; возвращается в ответе без изменений.
+        lang:
+          type: string
+          enum: [ru, kk, en]
+          default: ru
+          description: Язык текстов причин и предупреждения.
+        recipient:
+          $ref: '#/components/schemas/Recipient'
+        context:
+          $ref: '#/components/schemas/Context'
+    Recipient:
+      type: object
+      required: [account_id]
+      description: Признаки счёта получателя. Любой признак можно не передавать или передать null — он не повлияет на оценку.
+      properties:
+        account_id:
+          type: string
+          maxLength: 100
+          description: Псевдоним счёта (токен или хеш), по которому банк узнаёт счёт. Номер счёта, ИИН и ФИО не нужны.
+        account_age_days:
+          type: number
+          nullable: true
+          minimum: 0
+          description: Сколько дней назад открыт счёт.
+        unrelated_senders_7d:
+          type: number
+          nullable: true
+          minimum: 0
+          description: Сколько разных отправителей, у которых раньше не было переводов этому получателю, прислали деньги за последние 7 дней.
+        fast_outflow_share_7d:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1
+          description: Доля поступлений за последние 7 дней, которая ушла со счёта (перевод, снятие) в течение часа после зачисления.
+        shared_device_accounts:
+          type: number
+          nullable: true
+          minimum: 0
+          description: В сколько других счетов входили с тех же устройств, что и в этот счёт.
+    Context:
+      type: object
+      required: [amount]
+      properties:
+        amount:
+          type: number
+          exclusiveMinimum: true
+          minimum: 0
+          description: Сумма перевода.
+        sender_on_call:
+          type: boolean
+          nullable: true
+          default: null
+          description: Клиент во время перевода на звонке (сигнал клиентского модуля). null — модуль не подключён.
+        first_transfer_to_recipient:
+          type: boolean
+          default: false
+          description: Клиент раньше не переводил этому получателю.
+        amount_to_typical_ratio:
+          type: number
+          nullable: true
+          minimum: 0
+          default: null
+          description: Сумма перевода, делённая на обычный перевод этого клиента (например, медиану за 90 дней).
+    ScoreResponse:
+      type: object
+      required: [request_id, risk, risk_level, action, reasons, client_message, contributions, missing_features, model_version]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        transfer_id:
+          type: string
+          nullable: true
+        risk:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Оценка риска получателя. Это оценка для сравнения с порогами, а не вероятность.
+        risk_level:
+          type: string
+          enum: [low, medium, high]
+        action:
+          type: string
+          enum: [allow, warn, hold]
+          description: Рекомендация — пропустить, предупредить клиента, придержать перевод. Решение остаётся за банком.
+        reasons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Reason'
+        client_message:
+          type: object
+          nullable: true
+          description: Текст предупреждения для клиента; null при action = allow.
+          required: [title, body]
+          properties:
+            title:
+              type: string
+            body:
+              type: string
+        contributions:
+          type: object
+          description: Вклад каждого признака получателя в оценку (в единицах логита). Больше нуля — поднял риск.
+          additionalProperties:
+            type: number
+        missing_features:
+          type: array
+          description: Признаки, которые не были переданы.
+          items:
+            type: string
+        model_version:
+          type: string
+    Reason:
+      type: object
+      required: [code, text, contribution]
+      properties:
+        code:
+          type: string
+          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT]
+        text:
+          type: string
+          description: Причина на языке из поля lang.
+        contribution:
+          type: number
+          nullable: true
+          description: Вклад в оценку; null у причин, связанных с обстоятельствами перевода.
+    FlaggedAccount:
+      type: object
+      properties:
+        account_id:
+          type: string
+        max_risk:
+          type: number
+        last_action:
+          type: string
+          enum: [warn, hold]
+        flagged_transfers:
+          type: integer
+          description: Сколько переводов на этот счёт получили рекомендацию warn или hold.
+        flagged_amount:
+          type: number
+          description: Сумма этих переводов.
+        first_flagged_at:
+          type: string
+          format: date-time
+        last_flagged_at:
+          type: string
+          format: date-time
+        reason_codes:
+          type: array
+          items:
+            type: string
+        reasons:
+          type: array
+          items:
+            type: string
+        features:
+          type: object
+          description: Признаки счёта из последнего помеченного запроса.
+          additionalProperties:
+            type: number
+            nullable: true
+        model_version:
+          type: string
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          enum: [invalid_request, unauthorized, not_found, internal_error]
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
