@@ -5,8 +5,8 @@ info:
   description: |
     Банк вызывает `POST /score` перед отправкой перевода и получает риск получателя,
     причины на понятном языке и рекомендацию: пропустить, предупредить клиента или придержать перевод.
-    Счета, по которым была рекомендация «предупредить» или «придержать», доступны аналитику
-    через `GET /flagged` (JSON) и `GET /flagged.csv` (файл).
+    Каждый такой перевод становится алертом в очереди антифрод-аналитика (`GET /alerts`), а счёт
+    получателя попадает в выгрузку `GET /flagged` (JSON) и `GET /flagged.csv` (файл).
 
     Сервис считает оценку локально и не обращается к внешним системам.
 servers:
@@ -73,11 +73,95 @@ paths:
                   fast_outflow_share_7d: 4.98
                   shared_device_accounts: 2.32
                 missing_features: []
-                model_version: lr-synthetic-20261112
+                model_version: ebm-synthetic-20261112
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /alerts:
+    get:
+      summary: Очередь алертов для антифрод-аналитика
+      description: |
+        Алерт создаётся в момент ответа на `POST /score` с рекомендацией `warn` или `hold`.
+        Сначала идут алерты высокого приоритета, внутри приоритета — новые сверху.
+        Если сервис запущен с `ALERT_WEBHOOK_URL`, тот же объект сразу отправляется туда запросом POST.
+      operationId: listAlerts
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [new, in_progress, closed]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [high, medium]
+        - $ref: '#/components/parameters/since'
+      responses:
+        '200':
+          description: Алерты
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Alert'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /alerts/{alert_id}:
+    patch:
+      summary: Взять алерт в работу или закрыть с итогом разбора
+      operationId: updateAlert
+      parameters:
+        - name: alert_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [new, in_progress, closed]
+                resolution:
+                  type: string
+                  enum: [fraud, legit]
+                  description: Итог разбора; учитывается только при status = closed.
+            example:
+              status: closed
+              resolution: fraud
+      responses:
+        '200':
+          description: Обновлённый алерт
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Alert'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Алерт не найден
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /flagged:
     get:
       summary: Помеченные счета для аналитика (JSON)
@@ -205,7 +289,11 @@ components:
         transfer_id:
           type: string
           maxLength: 100
-          description: Идентификатор перевода в системе банка; возвращается в ответе без изменений.
+          description: Идентификатор перевода в системе банка; возвращается в ответе без изменений. Повторный запрос с тем же идентификатором не создаёт второй алерт.
+        client_ref:
+          type: string
+          maxLength: 100
+          description: Псевдоним клиента-отправителя. Попадает в алерт, чтобы система банка подставила контакты клиента. ФИО и телефон сервису не передаются.
         lang:
           type: string
           enum: [ru, kk, en]
@@ -296,6 +384,10 @@ components:
           type: string
           enum: [allow, warn, hold]
           description: Рекомендация — пропустить, предупредить клиента, придержать перевод. Решение остаётся за банком.
+        alert_id:
+          type: string
+          nullable: true
+          description: Идентификатор алерта в очереди аналитика; null при action = allow.
         reasons:
           type: array
           items:
@@ -312,7 +404,7 @@ components:
               type: string
         contributions:
           type: object
-          description: Вклад каждого признака получателя в оценку (в единицах логита). Больше нуля — поднял риск.
+          description: Вклад каждого признака получателя в оценку (в единицах логита). Больше нуля — поднял риск. Поправка за сочетание двух признаков делится между ними поровну.
           additionalProperties:
             type: number
         missing_features:
@@ -328,7 +420,7 @@ components:
       properties:
         code:
           type: string
-          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT]
+          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, CONFIRMED_FRAUD, REPEAT_TARGET, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT]
         text:
           type: string
           description: Причина на языке из поля lang.
@@ -336,6 +428,57 @@ components:
           type: number
           nullable: true
           description: Вклад в оценку; null у причин, связанных с обстоятельствами перевода.
+    Alert:
+      type: object
+      properties:
+        alert_id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        priority:
+          type: string
+          enum: [high, medium]
+          description: high — перевод придержан или на телефоне клиента включён удалённый доступ.
+        status:
+          type: string
+          enum: [new, in_progress, closed]
+        resolution:
+          type: string
+          nullable: true
+          enum: [fraud, legit]
+        transfer_id:
+          type: string
+          nullable: true
+        client_ref:
+          type: string
+          nullable: true
+          description: Псевдоним клиента из запроса; контакты по нему подставляет система банка.
+        account_id:
+          type: string
+          description: Псевдоним счёта получателя.
+        amount:
+          type: number
+        action:
+          type: string
+          enum: [warn, hold]
+        risk:
+          type: number
+        triggers:
+          type: array
+          description: Сработавшие триггеры — те же причины, что в ответе POST /score.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              text:
+                type: string
+        model_version:
+          type: string
     FlaggedAccount:
       type: object
       properties:

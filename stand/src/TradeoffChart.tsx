@@ -34,7 +34,7 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
           width={width}
           height={HEIGHT}
           role="img"
-          aria-label="Доля найденных дропперов в зависимости от доли ложных срабатываний среди честных счетов"
+          aria-label="Доля замеченных мошеннических счетов в зависимости от доли честных клиентов, которых побеспокоили зря"
           onPointerMove={onMove}
           onPointerLeave={() => setHover(null)}
           className="touch-pan-y"
@@ -53,7 +53,7 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
             </text>
           ))}
           <text x={(MARGIN.left + width - MARGIN.right) / 2} y={HEIGHT - 6} fontSize={12} textAnchor="middle" fill="#46506a">
-            Честные счета, помеченные по ошибке
+            Честные клиенты, которых побеспокоили зря
           </text>
 
           <path d={path ?? ''} fill="none" stroke="#2a78d6" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
@@ -62,7 +62,7 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
             <g key={mark.label}>
               <circle cx={x(mark.honest_flagged)} cy={y(mark.droppers_found)} r={5} fill="#2a78d6" stroke="#ffffff" strokeWidth={2} />
               <text x={x(mark.honest_flagged) + 10} y={y(mark.droppers_found) + 18} fontSize={12} fill="#0e1b3d">
-                {mark.label}: {percent(mark.droppers_found, 0)} при {percent(mark.honest_flagged)}
+                {mark.label}: {Math.round(mark.droppers_found * 100)} из 100 мошенников, {Math.round(mark.honest_flagged * 1000)} из 1000 честных
               </text>
             </g>
           ))}
@@ -81,10 +81,10 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
           style={x(hover.honest_flagged) > width / 2 ? { right: width - x(hover.honest_flagged) + 10 } : { left: x(hover.honest_flagged) + 10 }}
         >
           <div>
-            Найдено дропперов: <b className="tabular">{percent(hover.droppers_found)}</b>
+            Замечено мошенников: <b className="tabular">{percent(hover.droppers_found)}</b>
           </div>
           <div>
-            Ложных среди честных: <b className="tabular">{percent(hover.honest_flagged)}</b>
+            Зря побеспокоено честных: <b className="tabular">{percent(hover.honest_flagged)}</b>
           </div>
           <div className="text-white/65">порог оценки {hover.threshold.toLocaleString('ru-RU')}</div>
         </div>

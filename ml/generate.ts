@@ -42,6 +42,14 @@ const DROPPER_MIX: [AccountKind, number][] = [
   ['drop_careful', 10],
 ]
 
+// Для проверки на прочность: мошенники ушли от свежих счетов к купленным и «тихим».
+export const CAREFUL_DROPPER_MIX: [AccountKind, number][] = [
+  ['drop_fresh', 20],
+  ['drop_bought', 40],
+  ['drop_first_use', 20],
+  ['drop_careful', 20],
+]
+
 function featuresFor(kind: AccountKind, rng: Rng): RecipientFeatures {
   const oldAccount = () => Math.min(6000, Math.max(45, lognormal(rng, 900, 0.9)))
   switch (kind) {
@@ -81,11 +89,11 @@ function make(age: number, senders: number, outflow: number, devices: number): R
   }
 }
 
-export function generateAccounts(count: number, rng: Rng): Account[] {
+export function generateAccounts(count: number, rng: Rng, dropperMix = DROPPER_MIX): Account[] {
   const accounts: Account[] = []
   for (let i = 0; i < count; i++) {
     const is_dropper = rng() < DROPPER_SHARE
-    const kind = pick(rng, is_dropper ? DROPPER_MIX : HONEST_MIX)
+    const kind = pick(rng, is_dropper ? dropperMix : HONEST_MIX)
     accounts.push({
       account_id: 'acc_' + i.toString(36).padStart(5, '0'),
       kind,

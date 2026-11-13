@@ -1,133 +1,172 @@
-// Обучение и проверка модели: npm run train
-// 1) генерирует синтетические счета, 2) обучает логистическую регрессию, 3) подбирает пороги
-// на проверочной выборке, 4) считает метрики на отложенной выборке, которую модель не видела.
+// Обучение и проверка модели.
+//   npm run train                          — на синтетических счетах из ml/generate.ts
+//   npm run train -- --data счета.csv       — на размеченных счетах банка (формат — ml/data.ts)
+//   npm run train -- --export образец.csv   — сохранить синтетические счета как образец формата
+//
+// Шаги: обучаем на 60% счетов, подбираем пороги на 20%, считаем метрики на оставшихся 20%,
+// которых модель не видела. Рядом обучаем прежнюю модель (логистическую регрессию) для сравнения.
 
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { FEATURE_KEYS, transform, type FeatureKey } from '../service/src/features.ts'
+import { mkdirSync, writeFileSync } from 'node:fs'
+import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
 import { decide, scoreRecipient, type Model } from '../service/src/model.ts'
-import { DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccounts, generateContext, type Account } from './generate.ts'
+import { readCsv, writeCsv } from './data.ts'
+import { fitEbm } from './ebm.ts'
+import { CAREFUL_DROPPER_MIX, DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccounts, generateContext, type Account } from './generate.ts'
+import { fitLogistic, scoreLogistic } from './logistic.ts'
 import { createRng } from './random.ts'
 
 const SEED = 20261112
 const ACCOUNTS = 200000
 // Допустимая доля честных счетов выше каждого порога (на проверочной выборке).
 const TARGET_FPR = { soft: 0.1, warn: 0.02, hold: 0.003 }
+const BOOTSTRAP_RUNS = 300
+
+const argument = (name: string) => {
+  const index = process.argv.indexOf(name)
+  return index >= 0 ? process.argv[index + 1] : undefined
+}
+const dataFile = argument('--data')
+const exportFile = argument('--export')
+
+// --- данные ---
 
 const rng = createRng(SEED)
-const accounts = generateAccounts(ACCOUNTS, rng)
-const train = accounts.slice(0, ACCOUNTS * 0.6)
-const validation = accounts.slice(ACCOUNTS * 0.6, ACCOUNTS * 0.8)
-const test = accounts.slice(ACCOUNTS * 0.8)
+let accounts: Account[]
+if (dataFile) {
+  accounts = readCsv(dataFile)
+  // перемешиваем: в файле банка счета могут идти по дате или по типу
+  for (let i = accounts.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1))
+    ;[accounts[i], accounts[j]] = [accounts[j]!, accounts[i]!]
+  }
+} else {
+  accounts = generateAccounts(ACCOUNTS, rng)
+}
+if (exportFile) {
+  writeCsv(exportFile, accounts)
+  console.log(`Сохранено счетов: ${accounts.length} → ${exportFile}`)
+  process.exit(0)
+}
+
+const dropperShare = accounts.filter((a) => a.is_dropper).length / accounts.length
+const train = accounts.slice(0, Math.floor(accounts.length * 0.6))
+const validation = accounts.slice(train.length, Math.floor(accounts.length * 0.8))
+const test = accounts.slice(train.length + validation.length)
 
 // --- обучение ---
 
-const stats = {} as Record<FeatureKey, { mean: number; std: number }>
-for (const key of FEATURE_KEYS) {
-  const values = train.map((a) => transform(key, a.features[key]!))
-  const mean = values.reduce((s, v) => s + v, 0) / values.length
-  const std = Math.sqrt(values.reduce((s, v) => s + (v - mean) ** 2, 0) / values.length)
-  stats[key] = { mean, std }
-}
-
-const rows = train.map((a) => FEATURE_KEYS.map((key) => (transform(key, a.features[key]!) - stats[key].mean) / stats[key].std))
 const labels = train.map((a) => (a.is_dropper ? 1 : 0))
 const positives = labels.reduce((s: number, y) => s + y, 0)
 // Дропперов мало, поэтому их примеры весят больше: оба класса влияют на обучение одинаково.
-const weightPositive = train.length / (2 * positives)
-const weightNegative = train.length / (2 * (train.length - positives))
+const weights = labels.map((y) => (y ? train.length / (2 * positives) : train.length / (2 * (train.length - positives))))
 
-const weights = FEATURE_KEYS.map(() => 0)
-let bias = 0
-const LEARNING_RATE = 0.5
-const L2 = 0.001
-for (let step = 0; step < 800; step++) {
-  const gradient = weights.map(() => 0)
-  let gradientBias = 0
-  for (let i = 0; i < rows.length; i++) {
-    const x = rows[i]!
-    const logit = x.reduce((s, v, j) => s + v * weights[j]!, bias)
-    const error = (1 / (1 + Math.exp(-logit)) - labels[i]!) * (labels[i] ? weightPositive : weightNegative)
-    for (let j = 0; j < x.length; j++) gradient[j]! += error * x[j]!
-    gradientBias += error
-  }
-  for (let j = 0; j < weights.length; j++) {
-    weights[j]! -= LEARNING_RATE * (gradient[j]! / rows.length + L2 * weights[j]!)
-  }
-  bias -= (LEARNING_RATE * gradientBias) / rows.length
-}
-
+const fit = fitEbm(train.map((a) => FEATURE_KEYS.map((key) => a.features[key])), labels, weights)
 const model: Model = {
-  version: 'lr-synthetic-' + SEED,
-  bias,
-  features: Object.fromEntries(
-    FEATURE_KEYS.map((key, j) => [key, { ...stats[key], weight: weights[j]! }]),
-  ) as Model['features'],
+  version: `ebm-${dataFile ? 'bank' : 'synthetic'}-${SEED}`,
+  bias: fit.bias,
+  features: Object.fromEntries(FEATURE_KEYS.map((key, j) => [key, fit.curves[j]!])) as Model['features'],
+  pairs: fit.pairs.map((p) => ({ ...p, a: FEATURE_KEYS[p.a]!, b: FEATURE_KEYS[p.b]! })),
   thresholds: { soft: 0, warn: 0, hold: 0 },
 }
+const logistic = fitLogistic(train, labels, weights)
 
-// --- пороги: по проверочной выборке ---
+// --- пороги и метрики ---
 
-const riskOf = (a: Account) => scoreRecipient(model, a.features).risk
-const honestValidation = validation.filter((a) => !a.is_dropper).map(riskOf).sort((a, b) => b - a)
-for (const name of ['soft', 'warn', 'hold'] as const) {
-  model.thresholds[name] = round(honestValidation[Math.floor(honestValidation.length * TARGET_FPR[name])]!, 4)
+type Scorer = (features: RecipientFeatures) => number
+type Thresholds = Model['thresholds']
+const round = (value: number, digits: number) => Math.round(value * 10 ** digits) / 10 ** digits
+
+function thresholdsFor(score: Scorer): Thresholds {
+  const honest = validation.filter((a) => !a.is_dropper).map((a) => score(a.features)).sort((a, b) => b - a)
+  const at = (fpr: number) => round(honest[Math.floor(honest.length * fpr)]!, 4)
+  return { soft: at(TARGET_FPR.soft), warn: at(TARGET_FPR.warn), hold: at(TARGET_FPR.hold) }
 }
 
-// --- метрики: по отложенной выборке ---
-
-const scored = test.map((a) => ({ ...a, risk: riskOf(a) }))
-const droppers = scored.filter((a) => a.is_dropper)
-const honest = scored.filter((a) => !a.is_dropper)
-const share = (items: { risk: number }[], threshold: number) =>
-  items.length ? items.filter((a) => a.risk >= threshold).length / items.length : 0
-
-const accountLevel = (['warn', 'hold'] as const).map((name) => {
-  const threshold = model.thresholds[name]
-  const found = share(droppers, threshold)
-  const falseAlarms = share(honest, threshold)
-  // точность при доле дропперов из генератора: сколько помеченных счетов действительно дропперы
-  const flaggedDroppers = found * DROPPER_SHARE
-  const precision = flaggedDroppers / (flaggedDroppers + falseAlarms * (1 - DROPPER_SHARE))
-  return { threshold: name, value: threshold, droppers_found: found, honest_flagged: falseAlarms, precision }
-})
-
-const kinds = [...new Set(scored.map((a) => a.kind))]
-const byKind = kinds.map((kind) => {
-  const items = scored.filter((a) => a.kind === kind)
-  return {
-    kind,
-    is_dropper: items[0]!.is_dropper,
-    count: items.length,
-    above_warn: share(items, model.thresholds.warn),
-    above_hold: share(items, model.thresholds.hold),
-  }
-})
+const share = (risks: number[], threshold: number) => (risks.length ? risks.filter((r) => r >= threshold).length / risks.length : 0)
 
 // площадь под ROC: вероятность, что случайный дроппер получит оценку выше случайного честного счёта
-const ranked = [...scored].sort((a, b) => a.risk - b.risk)
-let rankSum = 0
-ranked.forEach((a, i) => {
-  if (a.is_dropper) rankSum += i + 1
-})
-const auc = (rankSum - (droppers.length * (droppers.length + 1)) / 2) / (droppers.length * honest.length)
+function auc(droppers: number[], honest: number[]): number {
+  const ranked = [...droppers.map((risk) => ({ risk, positive: true })), ...honest.map((risk) => ({ risk, positive: false }))].sort((a, b) => a.risk - b.risk)
+  let rankSum = 0
+  ranked.forEach((item, i) => {
+    if (item.positive) rankSum += i + 1
+  })
+  return (rankSum - (droppers.length * (droppers.length + 1)) / 2) / (droppers.length * honest.length)
+}
 
-const roc = Array.from({ length: 101 }, (_, i) => {
-  const threshold = i / 100
-  return { threshold, droppers_found: share(droppers, threshold), honest_flagged: share(honest, threshold) }
-})
-
-const BINS = 20
-const histogram = Array.from({ length: BINS }, (_, i) => {
-  const inBin = (a: { risk: number }) => Math.min(BINS - 1, Math.floor(a.risk * BINS)) === i
-  return {
-    from: i / BINS,
-    to: (i + 1) / BINS,
-    honest_share: honest.filter(inBin).length / honest.length,
-    dropper_share: droppers.filter(inBin).length / droppers.length,
+// Разброс метрики: много раз набираем выборку заново из тех же счетов и смотрим, как гуляет результат.
+function interval(risks: number[], threshold: number, bootstrapRng: () => number): [number, number] {
+  const results: number[] = []
+  for (let run = 0; run < BOOTSTRAP_RUNS; run++) {
+    let above = 0
+    for (let i = 0; i < risks.length; i++) if (risks[Math.floor(bootstrapRng() * risks.length)]! >= threshold) above++
+    results.push(above / risks.length)
   }
+  results.sort((a, b) => a - b)
+  return [results[Math.floor(BOOTSTRAP_RUNS * 0.025)]!, results[Math.floor(BOOTSTRAP_RUNS * 0.975)]!]
+}
+
+function evaluate(score: Scorer, thresholds: Thresholds, items: Account[], withIntervals = false) {
+  const droppers = items.filter((a) => a.is_dropper).map((a) => score(a.features))
+  const honest = items.filter((a) => !a.is_dropper).map((a) => score(a.features))
+  const bootstrapRng = createRng(SEED + 7)
+  return {
+    auc: auc(droppers, honest),
+    account_level: (['warn', 'hold'] as const).map((name) => {
+      const found = share(droppers, thresholds[name])
+      const falseAlarms = share(honest, thresholds[name])
+      // сколько помеченных счетов действительно дропперы — при доле дропперов как в данных
+      const precision = (found * dropperShare) / (found * dropperShare + falseAlarms * (1 - dropperShare) || 1)
+      return {
+        threshold: name,
+        value: thresholds[name],
+        droppers_found: found,
+        honest_flagged: falseAlarms,
+        precision,
+        ...(withIntervals && {
+          droppers_found_interval: interval(droppers, thresholds[name], bootstrapRng),
+          honest_flagged_interval: interval(honest, thresholds[name], bootstrapRng),
+        }),
+      }
+    }),
+  }
+}
+
+const ebmScore: Scorer = (features) => scoreRecipient(model, features).risk
+const logisticScore: Scorer = (features) => scoreLogistic(logistic, features)
+model.thresholds = thresholdsFor(ebmScore)
+const logisticThresholds = thresholdsFor(logisticScore)
+
+const result = evaluate(ebmScore, model.thresholds, test, true)
+const baseline = evaluate(logisticScore, logisticThresholds, test)
+
+const scored = test.map((a) => ({ ...a, risk: ebmScore(a.features) }))
+const droppers = scored.filter((a) => a.is_dropper)
+const honest = scored.filter((a) => !a.is_dropper)
+
+const byKind = [...new Set(scored.map((a) => a.kind))].map((kind) => {
+  const items = scored.filter((a) => a.kind === kind)
+  const risks = items.map((a) => a.risk)
+  return { kind, is_dropper: items[0]!.is_dropper, count: items.length, above_warn: share(risks, model.thresholds.warn), above_hold: share(risks, model.thresholds.hold) }
 })
 
-// --- переводы: что делает сервис целиком (модель + обстоятельства перевода) ---
+const roc = Array.from({ length: 201 }, (_, i) => {
+  const threshold = i / 200
+  return { threshold, droppers_found: share(droppers.map((a) => a.risk), threshold), honest_flagged: share(honest.map((a) => a.risk), threshold) }
+})
+
+// --- проверка на прочность: дропперы стали осторожнее, чем в обучении (только для синтетики) ---
+// Пороги не меняем: так видно, что будет, если мошенники сменят поведение, а модель ещё не переобучили.
+
+const shifted = dataFile ? null : generateAccounts(40000, createRng(SEED + 2), CAREFUL_DROPPER_MIX)
+const stress = shifted && {
+  dropper_mix: Object.fromEntries(CAREFUL_DROPPER_MIX),
+  droppers: shifted.filter((a) => a.is_dropper).length,
+  model: evaluate(ebmScore, model.thresholds, shifted),
+  baseline: evaluate(logisticScore, logisticThresholds, shifted),
+}
+
+// --- переводы: что делает сервис целиком (модель + обстоятельства перевода; только для синтетики) ---
 
 function transferLevel(withCallSignal: boolean) {
   const transferRng = createRng(SEED + 1)
@@ -149,50 +188,58 @@ function transferLevel(withCallSignal: boolean) {
 const metrics = {
   model_version: model.version,
   data: {
-    source: 'synthetic',
+    source: dataFile ? 'bank' : 'synthetic',
     seed: SEED,
-    accounts: ACCOUNTS,
-    dropper_share: DROPPER_SHARE,
+    accounts: accounts.length,
+    dropper_share: dropperShare,
     test_accounts: test.length,
     test_droppers: droppers.length,
     test_honest: honest.length,
   },
-  auc,
+  auc: result.auc,
   thresholds: model.thresholds,
-  account_level: accountLevel,
+  account_level: result.account_level,
+  baseline: { name: 'Логистическая регрессия', auc: baseline.auc, account_level: baseline.account_level },
   by_kind: byKind,
-  transfer_level: {
-    assumptions: TRANSFER_ASSUMPTIONS,
-    with_call_signal: transferLevel(true),
-    without_call_signal: transferLevel(false),
-  },
+  stress,
+  transfer_level: dataFile
+    ? null
+    : { assumptions: TRANSFER_ASSUMPTIONS, with_call_signal: transferLevel(true), without_call_signal: transferLevel(false) },
   roc,
-  histogram,
 }
 
 mkdirSync(new URL('../service/model/', import.meta.url), { recursive: true })
-writeFileSync(new URL('../service/model/model.json', import.meta.url), JSON.stringify(model, null, 2) + '\n')
+writeFileSync(new URL('../service/model/model.json', import.meta.url), JSON.stringify(model) + '\n')
 writeFileSync(new URL('./metrics.json', import.meta.url), JSON.stringify(metrics, null, 2) + '\n')
 
 // --- отчёт в консоль ---
 
 const pct = (v: number) => (v * 100).toFixed(1) + '%'
-console.log(`Модель ${model.version}, AUC ${auc.toFixed(3)}`)
-console.log('Веса:', Object.fromEntries(FEATURE_KEYS.map((k) => [k, round(model.features[k].weight, 2)])), 'bias', round(bias, 2))
-console.log('Пороги:', model.thresholds)
-console.log(`\nСчета (отложенная выборка: ${droppers.length} дропперов, ${honest.length} честных)`)
-for (const m of accountLevel) {
-  console.log(`  ${m.threshold.padEnd(4)} найдено дропперов ${pct(m.droppers_found)}, ложных среди честных ${pct(m.honest_flagged)}, точность ${pct(m.precision)}`)
+console.log(`Данные: ${dataFile ?? 'синтетические'}, счетов ${accounts.length}, дропперов ${pct(dropperShare)}`)
+console.log(`Пороги новой модели:`, model.thresholds)
+console.log(`\nОтложенная выборка: ${droppers.length} дропперов, ${honest.length} честных`)
+console.log(`                         AUC    warn: найдено / ложных    hold: найдено / ложных`)
+for (const [name, r] of [['объяснимый бустинг', result], ['логистическая регр.', baseline]] as const) {
+  const [w, h] = r.account_level
+  console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
+}
+for (const m of result.account_level) {
+  const [low, high] = m.droppers_found_interval!
+  console.log(`  ${m.threshold}: найдено ${pct(m.droppers_found)}, с учётом разброса от ${pct(low)} до ${pct(high)}; точность ${pct(m.precision)}`)
 }
 console.log('\nПо типам счетов (доля выше порога warn / hold)')
 for (const k of byKind) console.log(`  ${k.kind.padEnd(15)} ${String(k.count).padStart(6)}  ${pct(k.above_warn).padStart(6)} / ${pct(k.above_hold).padStart(6)}`)
-for (const [title, t] of [['с сигналом звонка', metrics.transfer_level.with_call_signal], ['без сигнала звонка', metrics.transfer_level.without_call_signal]] as const) {
-  console.log(`\nПереводы, ${title}`)
-  console.log(`  мошеннические: придержано ${pct(t.fraud.hold)}, предупреждение ${pct(t.fraud.warn)}, пропущено ${pct(1 - t.fraud.hold - t.fraud.warn)}`)
-  console.log(`  честные:       придержано ${pct(t.honest.hold)}, предупреждение ${pct(t.honest.warn)}`)
+if (stress) {
+  console.log(`\nДропперы стали осторожнее (${stress.droppers} дропперов, пороги прежние)`)
+  for (const [name, r] of [['объяснимый бустинг', stress.model], ['логистическая регр.', stress.baseline]] as const) {
+    const [w, h] = r.account_level
+    console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
+  }
 }
-
-function round(value: number, digits: number): number {
-  const k = 10 ** digits
-  return Math.round(value * k) / k
+if (metrics.transfer_level) {
+  for (const [title, t] of [['с сигналом звонка', metrics.transfer_level.with_call_signal], ['без сигнала звонка', metrics.transfer_level.without_call_signal]] as const) {
+    console.log(`\nПереводы, ${title}`)
+    console.log(`  мошеннические: придержано ${pct(t.fraud.hold)}, предупреждение ${pct(t.fraud.warn)}, пропущено ${pct(1 - t.fraud.hold - t.fraud.warn)}`)
+    console.log(`  честные:       придержано ${pct(t.honest.hold)}, предупреждение ${pct(t.honest.warn)}`)
+  }
 }

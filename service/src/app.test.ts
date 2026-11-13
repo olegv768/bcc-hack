@@ -1,10 +1,11 @@
 import { mkdtempSync } from 'node:fs'
+import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createApp } from './app.ts'
-import { loadModel } from './model.ts'
+import { loadModel, scoreRecipient } from './model.ts'
 
 const model = loadModel(new URL('../model/model.json', import.meta.url))
 const dataFile = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.json')
@@ -48,7 +49,18 @@ describe('POST /score', () => {
   })
 
   test('звонок и новый получатель поднимают предупреждение до приостановки', async () => {
-    const borderline = { account_id: 'tok_mid', account_age_days: 400, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.7, shared_device_accounts: 1 }
+    // счёт с оценкой между порогами «предупредить» и «придержать» ищем перебором: модель могли переобучить
+    const candidates = [3, 5, 7, 9, 12].flatMap((senders) =>
+      [0.5, 0.6, 0.7, 0.8].flatMap((outflow) =>
+        [0, 1, 2].map((devices) => ({ account_age_days: 400, unrelated_senders_7d: senders, fast_outflow_share_7d: outflow, shared_device_accounts: devices })),
+      ),
+    )
+    const middle = candidates.find((f) => {
+      const { risk } = scoreRecipient(model, f)
+      return risk >= model.thresholds.warn && risk < model.thresholds.hold
+    })
+    expect(middle).toBeDefined()
+    const borderline = { account_id: 'tok_mid', ...middle! }
     const quiet = await (await score({ recipient: borderline, context: calm })).json()
     const onCall = await (await score({ recipient: borderline, context: pressured })).json()
     expect(quiet.risk).toBe(onCall.risk)
@@ -107,6 +119,124 @@ describe('выгрузка для аналитика', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].flagged_transfers).toBe(2)
     expect(rows[0].flagged_amount).toBe(800000)
+  })
+})
+
+describe('память о счёте', () => {
+  const patch = (id: string, body: unknown) =>
+    fetch(`${url}/alerts/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+  const transit = { account_age_days: 900, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 }
+
+  test('после подтверждения мошенничества любой перевод на этот счёт придерживается', async () => {
+    const first = await (await score({ recipient: { ...dropper, account_id: 'tok_known' }, context: pressured })).json()
+    await patch(first.alert_id, { status: 'closed', resolution: 'fraud' })
+
+    // даже спокойный перевод с нейтральными признаками счёта
+    const next = await (await score({ recipient: { ...friend, account_id: 'tok_known' }, context: calm })).json()
+    expect(next.action).toBe('hold')
+    expect(next.reasons[0].code).toBe('CONFIRMED_FRAUD')
+  })
+
+  test('после отметки «ложное срабатывание» счёт перестаёт тревожить, но звонок всё ещё учитывается', async () => {
+    const first = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: calm })).json()
+    expect(first.action).not.toBe('allow')
+    await patch(first.alert_id, { status: 'closed', resolution: 'legit' })
+
+    const quiet = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: calm })).json()
+    expect(quiet.action).toBe('allow')
+    const onCall = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: pressured })).json()
+    expect(onCall.action).toBe('warn')
+  })
+
+  test('переводы от нескольких клиентов на один счёт поднимают решение на ступень', async () => {
+    const quietSeller = { account_id: 'tok_target', account_age_days: 700, unrelated_senders_7d: 3, fast_outflow_share_7d: 0.2, shared_device_accounts: 0 }
+    const alone = await (await score({ client_ref: 'cl_0', recipient: { ...quietSeller, account_id: 'tok_alone' }, context: calm })).json()
+    expect(alone.action).toBe('allow')
+
+    // трое разных клиентов под давлением уже получили предупреждение на этот счёт
+    for (const client of ['cl_1', 'cl_2', 'cl_3']) {
+      const warned = await (await score({ client_ref: client, recipient: quietSeller, context: pressured })).json()
+      expect(warned.action).not.toBe('allow')
+    }
+    // клиент из этой тройки сам себя не считает: для него «других» только двое
+    const again = await (await score({ client_ref: 'cl_1', recipient: quietSeller, context: calm })).json()
+    expect(again.action).toBe('allow')
+
+    const fourth = await (await score({ client_ref: 'cl_4', recipient: quietSeller, context: calm })).json()
+    expect(fourth.action).toBe('warn')
+    expect(fourth.reasons[0]).toMatchObject({ code: 'REPEAT_TARGET' })
+    expect(fourth.reasons[0].text).toContain('3 клиента')
+  })
+
+  test('повтор того же перевода не создаёт второй алерт', async () => {
+    const body = { transfer_id: 'tr_same', client_ref: 'cl_9', recipient: { ...dropper, account_id: 'tok_twice' }, context: pressured }
+    const first = await (await score(body)).json()
+    const second = await (await score(body)).json()
+    expect(second.alert_id).toBe(first.alert_id)
+    const queue = await (await fetch(url + '/alerts')).json()
+    expect(queue.items.filter((a: { transfer_id: string }) => a.transfer_id === 'tr_same')).toHaveLength(1)
+    const flagged = await (await fetch(url + '/flagged')).json()
+    expect(flagged.items.find((a: { account_id: string }) => a.account_id === 'tok_twice').flagged_transfers).toBe(1)
+  })
+})
+
+describe('очередь алертов для аналитика', () => {
+  test('придержанный перевод создаёт алерт высокого приоритета с триггерами, суммой и псевдонимом клиента', async () => {
+    const scored = await (await score({ transfer_id: 'tr_1', client_ref: 'cl_777', recipient: { ...dropper, account_id: 'tok_case' }, context: pressured })).json()
+    expect(scored.alert_id).toMatch(/^al_/)
+
+    const queue = await (await fetch(url + '/alerts?priority=high&status=new')).json()
+    const alert = queue.items.find((a: { alert_id: string }) => a.alert_id === scored.alert_id)
+    expect(alert).toMatchObject({ priority: 'high', status: 'new', action: 'hold', amount: 400000, client_ref: 'cl_777', transfer_id: 'tr_1', account_id: 'tok_case' })
+    expect(alert.triggers.map((t: { code: string }) => t.code)).toEqual(expect.arrayContaining(['NEW_ACCOUNT', 'ON_CALL']))
+    expect(alert.triggers[0].text).toMatch(/[а-я]/i)
+  })
+
+  test('обычный перевод алерта не создаёт', async () => {
+    const scored = await (await score({ recipient: friend, context: calm })).json()
+    expect(scored.alert_id).toBeNull()
+  })
+
+  test('аналитик берёт алерт в работу и закрывает с итогом', async () => {
+    const { alert_id } = await (await score({ recipient: { ...dropper, account_id: 'tok_case2' }, context: pressured })).json()
+    const patch = (body: unknown) =>
+      fetch(`${url}/alerts/${alert_id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+    expect((await (await patch({ status: 'in_progress' })).json()).status).toBe('in_progress')
+    const closed = await (await patch({ status: 'closed', resolution: 'fraud' })).json()
+    expect(closed).toMatchObject({ status: 'closed', resolution: 'fraud' })
+    expect((await patch({ status: 'done' })).status).toBe(400)
+    expect((await fetch(url + '/alerts/al_missing', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{"status":"closed"}' })).status).toBe(404)
+  })
+
+  test('новый алерт сразу уходит в систему банка, если задан её адрес', async () => {
+    const received: { priority: string; alert_id: string }[] = []
+    const bank = createServer((req, res) => {
+      let body = ''
+      req.on('data', (chunk) => (body += chunk))
+      req.on('end', () => {
+        received.push(JSON.parse(body))
+        res.end()
+      })
+    }).listen(0, '127.0.0.1')
+    await new Promise((resolve) => bank.once('listening', resolve))
+    const webhook = `http://127.0.0.1:${(bank.address() as AddressInfo).port}/cases`
+
+    const file = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.json')
+    const server = createApp({ model, dataFile: file, openapi: '', alertWebhook: webhook }).listen(0, '127.0.0.1')
+    await new Promise((resolve) => server.once('listening', resolve))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    const response = await fetch(base + '/score', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ recipient: dropper, context: pressured }),
+    })
+    const scored = await response.json()
+
+    await expect.poll(() => received.length).toBe(1)
+    expect(received[0]).toMatchObject({ alert_id: scored.alert_id, priority: 'high' })
+    server.close()
+    bank.close()
   })
 })
 

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { callSignal, remoteAccessSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
 import { score, type ScoreRequest, type ScoreResponse } from './api.ts'
-import { money, SCENARIOS, TYPICAL_TRANSFER } from './scenarios.ts'
+import { CLIENT_REF, money, SCENARIOS, TYPICAL_TRANSFER } from './scenarios.ts'
 
 type Outcome = 'sent' | 'cancelled' | 'held'
 
@@ -45,6 +45,7 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
     const request: ScoreRequest = {
       transfer_id: 'tr_' + Date.now().toString(36),
       lang,
+      client_ref: CLIENT_REF,
       recipient: { account_id: scenario.account_id, ...scenario.features },
       context: {
         amount,

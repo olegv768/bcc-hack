@@ -1,8 +1,9 @@
-// HTTP-интерфейс сервиса: POST /score, выгрузка GET /flagged и GET /flagged.csv.
+// HTTP-интерфейс сервиса: POST /score, очередь алертов GET /alerts, выгрузка GET /flagged и GET /flagged.csv.
 
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
+import { createAlertQueue, type Alert } from './alerts.ts'
 import { FEATURE_KEYS } from './features.ts'
 import { decide, riskLevel, type Model } from './model.ts'
 import { createStore, toCsv } from './store.ts'
@@ -13,6 +14,8 @@ const feature = (max: number) => z.number().min(0).max(max).nullable().default(n
 const ScoreRequest = z.object({
   transfer_id: z.string().min(1).max(100).optional(),
   lang: z.enum(['ru', 'kk', 'en']).default('ru'),
+  // псевдоним клиента-отправителя; попадает в алерт, чтобы система банка подставила его контакты
+  client_ref: z.string().min(1).max(100).optional(),
   recipient: z.object({
     // псевдоним счёта: токен или хеш, который банк может сопоставить со счётом; ИИН, ФИО и номер счёта не нужны
     account_id: z.string().min(1).max(100),
@@ -37,9 +40,39 @@ const FlaggedQuery = z.object({
   separator: z.enum(['comma', 'semicolon']).default('comma'),
 })
 
-export function createApp(options: { model: Model; dataFile: string; openapi: string; apiKey?: string; demo?: boolean }) {
+const AlertsQuery = z.object({
+  status: z.enum(['new', 'in_progress', 'closed']).optional(),
+  priority: z.enum(['high', 'medium']).optional(),
+  since: z.iso.datetime().optional(),
+})
+
+const AlertPatch = z.object({
+  status: z.enum(['new', 'in_progress', 'closed']),
+  resolution: z.enum(['fraud', 'legit']).optional(),
+})
+
+export function createApp(options: {
+  model: Model
+  dataFile: string
+  openapi: string
+  apiKey?: string
+  demo?: boolean
+  alertWebhook?: string // адрес системы ведения инцидентов банка; если задан, каждый новый алерт уходит туда сразу
+}) {
   const { model } = options
   const store = createStore(options.dataFile)
+  const alerts = createAlertQueue(options.dataFile.replace(/\.json$/, '') + '-alerts.json')
+
+  // Отправка не задерживает ответ на перевод: если система банка недоступна, алерт остаётся в очереди GET /alerts.
+  const notify = (alert: Alert) => {
+    if (!options.alertWebhook) return
+    fetch(options.alertWebhook, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(alert),
+      signal: AbortSignal.timeout(3000),
+    }).catch((error: Error) => console.error(`Алерт ${alert.alert_id} не доставлен: ${error.message}`))
+  }
   const app = express()
   app.disable('x-powered-by')
   app.use(express.json({ limit: '10kb' }))
@@ -70,10 +103,25 @@ export function createApp(options: { model: Model; dataFile: string; openapi: st
     const { lang, context, recipient } = parsed.data
     const { account_id, ...features } = recipient
 
-    const result = decide(model, features, context)
+    const result = decide(model, features, context, alerts.history(account_id, parsed.data.client_ref ?? null))
     const reasons = result.reasons.map((r) => ({ code: r.code, text: reasonText(r, lang), contribution: r.contribution }))
 
-    if (result.action !== 'allow') {
+    // Тот же перевод прислали ещё раз (повтор после сбоя связи): отвечаем, но второй алерт не создаём.
+    const repeated = parsed.data.transfer_id ? alerts.findByTransfer(parsed.data.transfer_id) : undefined
+    let alertId: string | null = repeated?.alert_id ?? null
+    if (result.action !== 'allow' && !repeated) {
+      const alert = alerts.add({
+        transfer_id: parsed.data.transfer_id ?? null,
+        client_ref: parsed.data.client_ref ?? null,
+        account_id,
+        amount: context.amount,
+        action: result.action,
+        risk: result.risk,
+        triggers: reasons.map((r) => ({ code: r.code, text: r.text })),
+        model_version: model.version,
+      })
+      alertId = alert.alert_id
+      notify(alert)
       store.add({
         account_id,
         risk: result.risk,
@@ -92,6 +140,7 @@ export function createApp(options: { model: Model; dataFile: string; openapi: st
       risk: result.risk,
       risk_level: riskLevel(model, result.risk),
       action: result.action,
+      alert_id: alertId,
       reasons,
       client_message: clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true }, lang),
       // вклад каждого признака в оценку — чтобы аналитик видел, из чего она сложилась
@@ -121,9 +170,35 @@ export function createApp(options: { model: Model; dataFile: string; openapi: st
     res.type('text/csv').attachment('flagged-accounts.csv').send(toCsv(result.items, result.separator))
   })
 
-  // Только для стенда: очистить список помеченных счетов перед показом.
+  app.get('/alerts', (req, res) => {
+    const query = AlertsQuery.safeParse(req.query)
+    if (!query.success) {
+      res.status(400).json({ error: 'invalid_request', message: z.prettifyError(query.error) })
+      return
+    }
+    const items = alerts.list(query.data)
+    res.json({ count: items.length, items })
+  })
+
+  // Аналитик берёт алерт в работу или закрывает его с итогом разбора.
+  app.patch('/alerts/:id', (req, res) => {
+    const patch = AlertPatch.safeParse(req.body)
+    if (!patch.success) {
+      res.status(400).json({ error: 'invalid_request', message: z.prettifyError(patch.error) })
+      return
+    }
+    const alert = alerts.update(req.params.id, patch.data)
+    if (!alert) {
+      res.status(404).json({ error: 'not_found', message: 'Алерт не найден' })
+      return
+    }
+    res.json(alert)
+  })
+
+  // Только для стенда: очистить помеченные счета и очередь алертов перед показом.
   if (options.demo) {
     app.delete('/flagged', (_req, res) => {
+      alerts.clear()
       store.clear()
       res.status(204).end()
     })

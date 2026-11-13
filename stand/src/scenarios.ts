@@ -14,6 +14,20 @@ export type Scenario = {
 // Обычный перевод условного клиента заглушки — от него считается «необычная сумма».
 export const TYPICAL_TRANSFER = 25000
 
+// Псевдоним клиента заглушки: его банк передаёт в сервис вместо имени и телефона.
+export const CLIENT_REF = 'cl_48213'
+
+const NAMES = ['Айгерим С.', 'Данияр К.', 'Мадина Т.', 'Ерлан Б.', 'Асель Н.', 'Тимур А.', 'Жанна О.', 'Руслан М.']
+
+// Заглушка справочника клиентов банка: по псевдониму возвращает вымышленные контакты.
+// В банке это делает его система ведения инцидентов; сервис оценки контактов не видит.
+export function clientContacts(ref: string): { name: string; phone: string } {
+  let hash = 0
+  for (const char of ref) hash = (hash * 31 + char.charCodeAt(0)) % 100000
+  const digits = String(hash).padStart(4, '0').slice(-4)
+  return { name: NAMES[hash % NAMES.length]!, phone: `+7 700 000 ${digits.slice(0, 2)} ${digits.slice(2)}` }
+}
+
 export const SCENARIOS: Scenario[] = [
   {
     id: 'sister',

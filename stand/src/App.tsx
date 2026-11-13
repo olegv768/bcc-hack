@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
+import type { Alert } from '../../service/src/alerts.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
-import { loadFlagged, type ScoreRequest, type ScoreResponse } from './api.ts'
+import { loadAlerts, loadFlagged, type ScoreRequest, type ScoreResponse } from './api.ts'
+import { DutyPanel } from './DutyPanel.tsx'
 import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
 import { ACTION_LABELS, money } from './scenarios.ts'
@@ -12,6 +14,8 @@ export function App() {
   const [response, setResponse] = useState<ScoreResponse | null>(null)
   const [flagged, setFlagged] = useState<FlaggedAccount[] | null>(null)
   const [flaggedError, setFlaggedError] = useState('')
+  const [alerts, setAlerts] = useState<Alert[] | null>(null)
+  const [alertsError, setAlertsError] = useState('')
 
   const refreshFlagged = useCallback(() => {
     loadFlagged()
@@ -20,6 +24,12 @@ export function App() {
         setFlaggedError('')
       })
       .catch((e: Error) => setFlaggedError(e.message))
+    loadAlerts()
+      .then((items) => {
+        setAlerts(items)
+        setAlertsError('')
+      })
+      .catch((e: Error) => setAlertsError(e.message))
   }, [])
 
   useEffect(refreshFlagged, [refreshFlagged])
@@ -34,7 +44,7 @@ export function App() {
           <p className="mt-4 max-w-[60ch] text-[17px] text-white/75">
             Перед отправкой денег банк спрашивает сервис о счёте получателя. Сделайте перевод в заглушке ниже и проследите его путь.
           </p>
-          <Rail request={request} response={response} flagged={flagged} />
+          <Rail request={request} response={response} alerts={alerts} />
         </div>
       </header>
 
@@ -55,14 +65,22 @@ export function App() {
               <ScorePanel request={request} response={response} />
             </Step>
 
-            <Step number={3} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
+            <Step
+              number={3}
+              title="Панель дежурного фрод-мониторинга"
+              note="Условная заглушка системы ведения инцидентов банка. Алерт попадает в очередь аналитика в тот же момент, когда сервис отвечает на перевод."
+            >
+              <DutyPanel alerts={alerts} error={alertsError} onChanged={refreshFlagged} />
+            </Step>
+
+            <Step number={4} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
               <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
             </Step>
           </div>
         </div>
 
-        <section className="mt-20">
-          <h2 className="mb-4 font-display text-[26px] font-semibold">Метрики модели</h2>
+        <section className="mt-20 border-t border-line pt-12">
+          <h2 className="mb-10 text-[28px] leading-tight font-bold">Насколько хорошо это работает</h2>
           <Metrics />
         </section>
 
@@ -79,8 +97,10 @@ export function App() {
 }
 
 // Маршрут перевода: точка бежит от приложения к сервису, а если счёт помечен — дальше к аналитику.
-function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | null; flagged: FlaggedAccount[] | null }) {
-  const { request, response, flagged } = props
+function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | null; alerts: Alert[] | null }) {
+  const { request, response, alerts } = props
+  const waiting = alerts?.filter((a) => a.status !== 'closed') ?? []
+  const current = alerts?.find((a) => a.alert_id === response?.alert_id)
   const isFlagged = response !== null && response.action !== 'allow'
 
   const signals = []
@@ -114,14 +134,14 @@ function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | n
         )}
       </Station>
 
-      <Station title="Аналитик" tone={isFlagged ? 'on' : undefined}>
-        {flagged ? (
+      <Station title="Антифрод-аналитик" tone={isFlagged ? 'on' : undefined}>
+        {alerts ? (
           <>
-            {isFlagged ? 'Счёт попал в выгрузку' : 'Получает помеченные счета'}
-            <span className="block text-white/70">всего помечено: {flagged.length}</span>
+            {isFlagged ? (current?.priority === 'high' ? 'Алерт высокого приоритета' : 'Алерт в очереди') : 'Получает алерты'}
+            <span className="block text-white/70">в очереди: {waiting.length}</span>
           </>
         ) : (
-          'Получает помеченные счета'
+          'Получает алерты'
         )}
       </Station>
     </ol>
@@ -143,7 +163,7 @@ function Station(props: { title: string; tone?: string; children: React.ReactNod
 function Step(props: { number: number; title: string; note: string; sticky?: boolean; children: React.ReactNode }) {
   return (
     <section className={'min-w-0 ' + (props.sticky ? '[@media(min-height:900px)]:lg:sticky lg:top-6 lg:self-start' : '')}>
-      <h2 className="flex items-center gap-3 font-display text-[20px] font-semibold">
+      <h2 className="flex items-center gap-3 text-[22px] leading-tight font-bold">
         <span className="tabular grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[14px] text-white">{props.number}</span>
         {props.title}
       </h2>

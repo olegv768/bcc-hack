@@ -1,5 +1,5 @@
 // Запуск сервиса: npm run service
-// Настройки (все необязательные): PORT, HOST, SCORE_API_KEY, DATA_FILE, DEMO=0
+// Настройки (все необязательные): PORT, HOST, SCORE_API_KEY, DATA_FILE, ALERT_WEBHOOK_URL, DEMO=0
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -15,6 +15,7 @@ const app = createApp({
   openapi: readFileSync(new URL('../../docs/openapi.yaml', import.meta.url), 'utf8'),
   dataFile: process.env.DATA_FILE ?? fileURLToPath(new URL('../data/flagged.json', import.meta.url)),
   apiKey: process.env.SCORE_API_KEY,
+  alertWebhook: process.env.ALERT_WEBHOOK_URL,
   demo: process.env.DEMO !== '0',
 })
 

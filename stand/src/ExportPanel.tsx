@@ -29,6 +29,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         await score({
           transfer_id: `batch_${Date.now().toString(36)}_${i}`,
           lang: 'ru',
+          client_ref: 'cl_' + String(Math.floor(rng() * 90000) + 10000),
           recipient: { account_id: account.account_id, ...account.features },
           context: generateContext(account.is_dropper, rng),
         })
@@ -55,7 +56,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         <button type="button" onClick={runBatch} disabled={progress !== null} className={button + ' bg-ink text-white'}>
           {progress ?? `Прогнать ${BATCH_HONEST + BATCH_FRAUD} случайных переводов`}
         </button>
-        <button type="button" onClick={clear} disabled={progress !== null || !props.items?.length} className={button + ' bg-surface text-ink'}>
+        <button type="button" onClick={clear} disabled={progress !== null || !props.items?.length} className={button + ' bg-field text-ink'}>
           Очистить список
         </button>
       </div>
@@ -87,11 +88,11 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
       {props.items === null ? (
         !props.error && <p className="text-ink-2">Загружаем…</p>
       ) : props.items.length === 0 ? (
-        <p className="rounded-[20px] bg-surface p-6 text-ink-2">
+        <p className="rounded-[20px] border border-dashed border-line p-6 text-ink-2">
           Пока пусто. Счёт попадает в выгрузку, когда сервис рекомендует предупредить клиента или придержать перевод.
         </p>
       ) : (
-        <div className="max-h-[480px] overflow-auto rounded-[20px] bg-surface">
+        <div className="max-h-[480px] overflow-auto border-y border-line">
           <table className="w-full min-w-[540px] text-left text-[14px]">
             <thead className="sticky top-0 border-b border-line bg-surface text-ink-2 shadow-[0_1px_0_var(--color-line)]">
               <tr>

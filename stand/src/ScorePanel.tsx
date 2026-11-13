@@ -65,15 +65,17 @@ function RiskScale(props: { risk: number }) {
   )
 }
 
-function ReasonList(props: { title: string; reasons: ScoreResponse['reasons'] }) {
+const HISTORY_CODES = ['CONFIRMED_FRAUD', 'REPEAT_TARGET']
+
+function ReasonList(props: { title: string; reasons: ScoreResponse['reasons']; tone?: 'alarm' }) {
   if (props.reasons.length === 0) return null
   return (
     <div>
-      <h4 className="mb-2 text-[14px] text-muted">{props.title}</h4>
+      <h4 className={'mb-2 text-[14px] ' + (props.tone ? 'opacity-80' : 'text-muted')}>{props.title}</h4>
       <ul className="space-y-2">
         {props.reasons.map((reason) => (
           <li key={reason.code} className="flex gap-2.5">
-            <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-ink" aria-hidden="true" />
+            <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
             {reason.text}
           </li>
         ))}
@@ -87,8 +89,8 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
   const { request, response } = props
   if (!request || !response) {
     return (
-      <div className="rounded-[28px] bg-surface p-7">
-        <p className="font-display text-[22px] leading-snug font-semibold">Ответа пока нет</p>
+      <div className="rounded-[20px] border border-dashed border-line p-6">
+        <p className="text-[19px] font-semibold">Ответа пока нет</p>
         <p className="mt-2 max-w-[52ch] text-ink-2">
           Нажмите «Перевести» в заглушке. Здесь появится то, что сервис вернул банку: риск получателя, причины и рекомендация.
         </p>
@@ -97,12 +99,14 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
   }
 
   const { account_id, ...features } = request.recipient
+  // причины из памяти сервиса о счёте: прошлые разборы аналитика и переводы других клиентов
+  const fromHistory = response.reasons.filter((r) => HISTORY_CODES.includes(r.code))
   const aboutAccount = response.reasons.filter((r) => r.contribution !== null)
-  const aboutTransfer = response.reasons.filter((r) => r.contribution === null)
+  const aboutTransfer = response.reasons.filter((r) => r.contribution === null && !HISTORY_CODES.includes(r.code))
 
   return (
     <div className="space-y-4">
-      <div className={'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-[28px] p-7 ' + VERDICT_CLASS[response.action]}>
+      <div className={'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-[20px] p-7 ' + VERDICT_CLASS[response.action]}>
         <div>
           <div className="text-[14px] opacity-80">Рекомендация банку</div>
           <div className="font-display text-[34px] leading-tight font-semibold sm:text-[42px]">{ACTION_LABELS[response.action]}</div>
@@ -114,15 +118,20 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
         </div>
       </div>
 
-      <div className="space-y-7 rounded-[28px] bg-surface p-7">
+      <div className="space-y-9 pt-4">
         <RiskScale risk={response.risk} />
 
         <div>
-          <h3 className="mb-3 font-display text-[17px] font-semibold">Причины</h3>
+          <h3 className="mb-3 text-[19px] font-semibold">Причины</h3>
           {response.reasons.length === 0 ? (
             <p className="text-ink-2">Подозрительных признаков нет.</p>
           ) : (
             <div className="grid gap-x-10 gap-y-5 md:grid-cols-2">
+              {fromHistory.length > 0 && (
+                <div className="rounded-[16px] bg-hold-bg p-4 text-hold-ink md:col-span-2">
+                  <ReasonList title="Что сервис уже знает об этом счёте" reasons={fromHistory} tone="alarm" />
+                </div>
+              )}
               <ReasonList title="Счёт получателя" reasons={aboutAccount} />
               <ReasonList title="Обстоятельства перевода" reasons={aboutTransfer} />
             </div>
@@ -130,7 +139,7 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
         </div>
 
         <div>
-          <h3 className="mb-1 font-display text-[17px] font-semibold">Из чего сложилась оценка</h3>
+          <h3 className="mb-1 text-[19px] font-semibold">Из чего сложилась оценка</h3>
           <ContributionChart contributions={response.contributions} features={features} />
         </div>
 

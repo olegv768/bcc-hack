@@ -2,11 +2,13 @@
 
 import type { Action, Lang } from '../../sdk/web/dropper-guard.ts'
 import type { FeatureKey, RecipientFeatures, TransferContext } from '../../service/src/features.ts'
+import type { Alert } from '../../service/src/alerts.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
 
 export type ScoreRequest = {
   transfer_id: string
   lang: Lang
+  client_ref?: string
   recipient: { account_id: string } & RecipientFeatures
   context: TransferContext
 }
@@ -16,6 +18,7 @@ export type ScoreResponse = {
   risk: number
   risk_level: 'low' | 'medium' | 'high'
   action: Action
+  alert_id: string | null
   reasons: { code: string; text: string; contribution: number | null }[]
   client_message: { title: string; body: string } | null
   contributions: Record<FeatureKey, number>
@@ -49,6 +52,19 @@ export async function score(request: ScoreRequest): Promise<ScoreResponse> {
 
 export async function loadFlagged(): Promise<FlaggedAccount[]> {
   return (await readJson(await fetch('/api/flagged').catch(() => null))).items
+}
+
+export async function loadAlerts(): Promise<Alert[]> {
+  return (await readJson(await fetch('/api/alerts').catch(() => null))).items
+}
+
+export async function updateAlert(id: string, status: Alert['status'], resolution?: 'fraud' | 'legit'): Promise<Alert> {
+  const response = await fetch('/api/alerts/' + encodeURIComponent(id), {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ status, resolution }),
+  }).catch(() => null)
+  return readJson(response)
 }
 
 export async function clearFlagged(): Promise<void> {

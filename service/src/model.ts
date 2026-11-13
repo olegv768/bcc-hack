@@ -1,13 +1,17 @@
 // Оценка получателя и решение по переводу. Всё считается в этом процессе, наружу ничего не уходит.
 
 import { readFileSync } from 'node:fs'
-import { FEATURE_KEYS, transform, type FeatureKey, type RecipientFeatures, type TransferContext } from './features.ts'
+import { FEATURE_KEYS, type FeatureKey, type RecipientFeatures, type TransferContext } from './features.ts'
 
-// Логистическая регрессия: у каждого признака один вес, поэтому вклад каждого признака в оценку виден напрямую.
+// Объяснимый бустинг (обучение — ml/ebm.ts). Оценка — сумма вкладов:
+//   features — «кривая» по каждому признаку: значения признака разбиты на интервалы, у каждого свой вклад;
+//   pairs — таблица по каждой паре признаков: поправка за их сочетание.
+// Вклад признака в причины = его кривая + половина каждой парной поправки с его участием.
 export type Model = {
   version: string
   bias: number
-  features: Record<FeatureKey, { mean: number; std: number; weight: number }>
+  features: Record<FeatureKey, { edges: number[]; scores: number[] }>
+  pairs: { a: FeatureKey; b: FeatureKey; edgesA: number[]; edgesB: number[]; scores: number[][] }[]
   // пороги оценки, подобранные на проверочной выборке по доле ложных срабатываний
   thresholds: { soft: number; warn: number; hold: number }
 }
@@ -19,12 +23,23 @@ export type ReasonCode =
   | 'MANY_UNRELATED_SENDERS'
   | 'FAST_OUTFLOW'
   | 'SHARED_DEVICE'
+  | 'CONFIRMED_FRAUD'
+  | 'REPEAT_TARGET'
   | 'ON_CALL'
   | 'REMOTE_ACCESS'
   | 'FIRST_TRANSFER'
   | 'UNUSUAL_AMOUNT'
 
 export type Reason = { code: ReasonCode; value: number | null; contribution: number | null }
+
+// Что сервис уже знает о счёте получателя из прошлых переводов и разборов аналитика.
+export type AccountHistory = {
+  confirmedFraud: boolean // аналитик закрыл алерт по этому счёту как мошенничество
+  confirmedLegit: boolean // аналитик закрыл алерт как ложное срабатывание
+  otherClients24h: number // сколько других клиентов за сутки получили предупреждение или приостановку на этот счёт
+}
+
+export const NO_HISTORY: AccountHistory = { confirmedFraud: false, confirmedLegit: false, otherClients24h: 0 }
 
 const FEATURE_REASON: Record<FeatureKey, ReasonCode> = {
   account_age_days: 'NEW_ACCOUNT',
@@ -36,32 +51,52 @@ const FEATURE_REASON: Record<FeatureKey, ReasonCode> = {
 // Признак попадает в причины, если заметно поднял оценку (в единицах логита).
 const MIN_CONTRIBUTION = 0.4
 const UNUSUAL_AMOUNT_RATIO = 3
+// С какого числа других клиентов за сутки счёт считается «мишенью»: совпадение трёх независимых людей маловероятно.
+export const REPEAT_TARGET_CLIENTS = 3
 
 export function loadModel(path: string | URL): Model {
   return JSON.parse(readFileSync(path, 'utf8')) as Model
 }
 
+// Номер интервала: сколько границ не больше значения.
+export function binOf(edges: number[], value: number): number {
+  let low = 0
+  let high = edges.length
+  while (low < high) {
+    const middle = (low + high) >> 1
+    if (value >= edges[middle]!) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
 export function scoreRecipient(model: Model, features: RecipientFeatures) {
   let logit = model.bias
-  const contributions = {} as Record<FeatureKey, number>
-  const missing: FeatureKey[] = []
+  const contributions = Object.fromEntries(FEATURE_KEYS.map((key) => [key, 0])) as Record<FeatureKey, number>
+  const known = (key: FeatureKey) => features[key] !== null && features[key] !== undefined
+  // непереданный признак ничего не добавляет: это равносильно «как у среднего счёта»
+  const missing = FEATURE_KEYS.filter((key) => !known(key))
 
   for (const key of FEATURE_KEYS) {
-    const value = features[key]
-    if (value === null || value === undefined) {
-      missing.push(key)
-      contributions[key] = 0
-      continue
-    }
-    const { mean, std, weight } = model.features[key]
-    contributions[key] = (weight * (transform(key, value) - mean)) / std
-    logit += contributions[key]
+    if (!known(key)) continue
+    const curve = model.features[key]
+    const score = curve.scores[binOf(curve.edges, features[key]!)]!
+    contributions[key] += score
+    logit += score
+  }
+
+  for (const pair of model.pairs) {
+    if (!known(pair.a) || !known(pair.b)) continue
+    const score = pair.scores[binOf(pair.edgesA, features[pair.a]!)]![binOf(pair.edgesB, features[pair.b]!)]!
+    contributions[pair.a] += score / 2
+    contributions[pair.b] += score / 2
+    logit += score
   }
 
   return { risk: 1 / (1 + Math.exp(-logit)), contributions, missing }
 }
 
-export function decide(model: Model, features: RecipientFeatures, context: TransferContext) {
+export function decide(model: Model, features: RecipientFeatures, context: TransferContext, history: AccountHistory = NO_HISTORY) {
   const { risk, contributions, missing } = scoreRecipient(model, features)
   const { soft, warn, hold } = model.thresholds
 
@@ -70,15 +105,33 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   const remoteAccess = context.remote_access_active === true
   const underPressure = (context.sender_on_call === true || remoteAccess) && context.first_transfer_to_recipient
   const unusualAmount = (context.amount_to_typical_ratio ?? 0) >= UNUSUAL_AMOUNT_RATIO
+  const repeatTarget = !history.confirmedLegit && history.otherClients24h >= REPEAT_TARGET_CLIENTS
+
+  // Счёт, который аналитик проверил и признал честным, по признакам счёта больше не тревожит;
+  // обстоятельства перевода (звонок, удалённый доступ) продолжают действовать.
+  const accountRisk = history.confirmedLegit ? 0 : risk
 
   let action: Action = 'allow'
-  if (risk >= hold) action = 'hold'
-  else if (risk >= warn) action = underPressure ? 'hold' : 'warn'
-  else if (underPressure && (risk >= soft || unusualAmount || remoteAccess)) action = 'warn'
+  if (accountRisk >= hold) action = 'hold'
+  else if (accountRisk >= warn) action = underPressure ? 'hold' : 'warn'
+  else if (underPressure && (accountRisk >= soft || unusualAmount || remoteAccess)) action = 'warn'
 
-  const reasons: Reason[] = FEATURE_KEYS.filter((key) => contributions[key] >= MIN_CONTRIBUTION)
-    .sort((a, b) => contributions[b] - contributions[a])
-    .map((key) => ({ code: FEATURE_REASON[key], value: features[key], contribution: round(contributions[key], 2) }))
+  // На счёт за сутки уже шли подозрительные переводы от нескольких клиентов — поднимаем решение на ступень.
+  if (repeatTarget) action = action === 'allow' ? 'warn' : 'hold'
+  // Подтверждённый мошеннический счёт: придерживаем всегда.
+  if (history.confirmedFraud) action = 'hold'
+
+  const reasons: Reason[] = []
+  if (history.confirmedFraud) reasons.push({ code: 'CONFIRMED_FRAUD', value: null, contribution: null })
+  if (repeatTarget) reasons.push({ code: 'REPEAT_TARGET', value: history.otherClients24h, contribution: null })
+
+  if (!history.confirmedLegit) {
+    reasons.push(
+      ...FEATURE_KEYS.filter((key) => contributions[key] >= MIN_CONTRIBUTION)
+        .sort((a, b) => contributions[b] - contributions[a])
+        .map((key) => ({ code: FEATURE_REASON[key], value: features[key], contribution: round(contributions[key], 2) })),
+    )
+  }
 
   // Обстоятельства перевода показываем, только когда есть о чём предупреждать.
   if (action !== 'allow') {
