@@ -25,93 +25,116 @@ export function App() {
   useEffect(refreshFlagged, [refreshFlagged])
 
   return (
-    <div className="mx-auto max-w-[1180px] px-4 pt-8 pb-16 sm:px-6">
-      <header className="mb-10 max-w-[68ch]">
-        <h1 className="text-3xl leading-tight font-semibold sm:text-4xl">Где модуль встаёт в поток перевода</h1>
-        <p className="mt-3 text-[17px] text-ink-2">
-          Перед тем как отправить деньги, банк спрашивает сервис о получателе. Сервис отвечает риском, причинами и рекомендацией; приложение
-          показывает клиенту предупреждение, а помеченный счёт уходит аналитику.
-        </p>
+    <>
+      <header className="bg-navy text-white">
+        <div className="mx-auto max-w-[1180px] px-4 pt-10 pb-10 sm:px-6 sm:pt-14">
+          <h1 className="max-w-[18ch] font-display text-[30px] leading-[1.12] font-semibold sm:text-[46px]">
+            Перевод мошеннику останавливается здесь
+          </h1>
+          <p className="mt-4 max-w-[60ch] text-[17px] text-white/75">
+            Перед отправкой денег банк спрашивает сервис о счёте получателя. Сделайте перевод в заглушке ниже и проследите его путь.
+          </p>
+          <Rail request={request} response={response} flagged={flagged} />
+        </div>
       </header>
 
-      <ol className="mb-10 grid overflow-hidden rounded-xl border border-line bg-surface sm:grid-cols-3" aria-label="Путь перевода">
-        <FlowNode
-          number={1}
-          title="Приложение банка"
-          text={request ? `Перевод ${money(request.context.amount)}${signals(request)}` : 'Клиент нажимает «Перевести»'}
-        />
-        <FlowNode
-          number={2}
-          title="Сервис оценки"
-          text={
-            response
-              ? `Риск ${response.risk.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} — ${ACTION_LABELS[response.action].toLowerCase()}`
-              : 'Отвечает риском и рекомендацией'
-          }
-          tone={response?.action}
-        />
-        <FlowNode
-          number={3}
-          title="Аналитик"
-          text={flagged ? `Помеченных счетов в выгрузке: ${flagged.length}` : 'Получает помеченные счета'}
-        />
-      </ol>
-
-      <div className="grid gap-x-10 gap-y-12 lg:grid-cols-[360px_1fr]">
-        <Step number={1} sticky title="Приложение банка" note="Условная заглушка экрана перевода с подключённым клиентским модулем.">
-          <TransferStub
-            onScored={(req, res) => {
-              setRequest(req)
-              setResponse(res)
-              refreshFlagged()
-            }}
-          />
-        </Step>
-
-        <div className="min-w-0 space-y-12">
-          <Step number={2} title="Сервис оценки получателя" note="Считает локально, внешних сервисов не вызывает.">
-            <ScorePanel request={request} response={response} />
+      <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-16 sm:px-6">
+        <div className="grid gap-x-12 gap-y-12 lg:grid-cols-[372px_1fr]">
+          <Step number={1} sticky title="Приложение банка" note="Условная заглушка экрана перевода с клиентским модулем.">
+            <TransferStub
+              onScored={(req, res) => {
+                setRequest(req)
+                setResponse(res)
+                refreshFlagged()
+              }}
+            />
           </Step>
 
-          <Step number={3} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
-            <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
-          </Step>
+          <div className="min-w-0 space-y-14">
+            <Step number={2} title="Сервис оценки получателя" note="Считает локально, внешних сервисов не вызывает.">
+              <ScorePanel request={request} response={response} />
+            </Step>
+
+            <Step number={3} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
+              <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
+            </Step>
+          </div>
         </div>
-      </div>
 
-      <section className="mt-16 border-t border-line pt-10">
-        <h2 className="mb-3 text-2xl font-semibold">Метрики модели</h2>
-        <Metrics />
-      </section>
+        <section className="mt-20">
+          <h2 className="mb-4 font-display text-[26px] font-semibold">Метрики модели</h2>
+          <Metrics />
+        </section>
 
-      <footer className="mt-16 border-t border-line pt-5 text-[13px] text-muted">
-        Демонстрационный стенд. Данные синтетические, счета и клиенты вымышлены. Описание API —{' '}
-        <a className="underline underline-offset-2" href="/api/openapi.yaml" target="_blank" rel="noreferrer">
-          openapi.yaml
-        </a>
-        .
-      </footer>
-    </div>
+        <footer className="mt-16 border-t border-line pt-5 text-[14px] text-muted">
+          Демонстрационный стенд. Данные синтетические, счета и клиенты вымышлены. Описание API —{' '}
+          <a className="text-accent underline underline-offset-2" href="/api/openapi.yaml" target="_blank" rel="noreferrer">
+            openapi.yaml
+          </a>
+          .
+        </footer>
+      </main>
+    </>
   )
 }
 
-function signals(request: ScoreRequest): string {
-  const parts = []
-  if (request.context.sender_on_call) parts.push('на звонке')
-  if (request.context.remote_access_active) parts.push('удалённый доступ')
-  return parts.length ? ', ' + parts.join(', ') : ''
+// Маршрут перевода: точка бежит от приложения к сервису, а если счёт помечен — дальше к аналитику.
+function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | null; flagged: FlaggedAccount[] | null }) {
+  const { request, response, flagged } = props
+  const isFlagged = response !== null && response.action !== 'allow'
+
+  const signals = []
+  if (request?.context.sender_on_call) signals.push('клиент на звонке')
+  if (request?.context.remote_access_active) signals.push('включён удалённый доступ')
+
+  return (
+    <ol className="rail mt-10" aria-label="Путь перевода">
+      <li className="rail-line" aria-hidden="true" />
+      {response && <li key={response.request_id} className="rail-pulse" data-run={isFlagged ? 'analyst' : 'service'} aria-hidden="true" />}
+
+      <Station title="Приложение банка" tone={request ? 'on' : undefined}>
+        {request ? (
+          <>
+            Перевод {money(request.context.amount)}
+            {signals.length > 0 && <span className="block text-white/70">{signals.join(', ')}</span>}
+          </>
+        ) : (
+          'Клиент нажимает «Перевести»'
+        )}
+      </Station>
+
+      <Station title="Сервис оценки" tone={response?.action}>
+        {response ? (
+          <>
+            {ACTION_LABELS[response.action]}
+            <span className="block text-white/70">риск {response.risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+          </>
+        ) : (
+          'Отвечает риском и рекомендацией'
+        )}
+      </Station>
+
+      <Station title="Аналитик" tone={isFlagged ? 'on' : undefined}>
+        {flagged ? (
+          <>
+            {isFlagged ? 'Счёт попал в выгрузку' : 'Получает помеченные счета'}
+            <span className="block text-white/70">всего помечено: {flagged.length}</span>
+          </>
+        ) : (
+          'Получает помеченные счета'
+        )}
+      </Station>
+    </ol>
+  )
 }
 
-const TONE = { allow: 'bg-allow-bg', warn: 'bg-warn-bg', hold: 'bg-hold-bg' }
-
-function FlowNode(props: { number: number; title: string; text: string; tone?: keyof typeof TONE }) {
+function Station(props: { title: string; tone?: string; children: React.ReactNode }) {
   return (
-    <li className={'border-b border-line px-4 py-3 last:border-0 sm:border-r sm:border-b-0 ' + (props.tone ? TONE[props.tone] : '')}>
-      <div className="text-[13px] text-ink-2">
-        <span className="tabular">{props.number}</span> · {props.title}
-      </div>
-      <div className="font-medium" aria-live="polite">
-        {props.text}
+    <li className="rail-station">
+      <span className="rail-node" data-tone={props.tone} aria-hidden="true" />
+      <div className="text-[14px] text-white/60">{props.title}</div>
+      <div className="text-[17px] font-medium" aria-live="polite">
+        {props.children}
       </div>
     </li>
   )
@@ -119,12 +142,12 @@ function FlowNode(props: { number: number; title: string; text: string; tone?: k
 
 function Step(props: { number: number; title: string; note: string; sticky?: boolean; children: React.ReactNode }) {
   return (
-    <section className={'min-w-0 ' + (props.sticky ? '[@media(min-height:860px)]:lg:sticky lg:top-6 lg:self-start' : '')}>
-      <h2 className="flex items-baseline gap-2.5 text-xl font-semibold">
-        <span className="tabular text-muted">{props.number}</span>
+    <section className={'min-w-0 ' + (props.sticky ? '[@media(min-height:900px)]:lg:sticky lg:top-6 lg:self-start' : '')}>
+      <h2 className="flex items-center gap-3 font-display text-[20px] font-semibold">
+        <span className="tabular grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[14px] text-white">{props.number}</span>
         {props.title}
       </h2>
-      <p className="mt-1 mb-4 text-[14px] text-ink-2">{props.note}</p>
+      <p className="mt-2 mb-5 text-[15px] text-ink-2">{props.note}</p>
       {props.children}
     </section>
   )

@@ -10,8 +10,8 @@ const count = (value: number) => value.toLocaleString('ru-RU')
 
 // Метрики из ml/metrics.json — файл пишет npm run train.
 export function Metrics() {
-  const cell = 'px-3 py-2'
-  const number = 'tabular px-3 py-2 text-right'
+  const cell = 'px-4 py-2.5'
+  const number = 'tabular px-4 py-2.5 text-right'
 
   return (
     <div className="space-y-8">
@@ -21,15 +21,15 @@ export function Metrics() {
         выборке: {count(metrics.data.test_droppers)} дропперов и {count(metrics.data.test_honest)} честных счетов, которых модель не видела.
       </p>
 
-      <div className="grid gap-x-10 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Figure value={percent(warn.droppers_found, 0)} label="дропперов найдено на пороге «предупредить»" />
         <Figure value={percent(warn.honest_flagged)} label="честных счетов помечено по ошибке на этом пороге" />
         <Figure value={percent(hold.droppers_found, 0)} label="дропперов найдено на пороге «придержать»" />
         <Figure value={percent(hold.honest_flagged)} label="честных счетов помечено по ошибке на этом пороге" />
       </div>
 
-      <div>
-        <h3 className="font-semibold">Цена порога</h3>
+      <div className="rounded-[28px] bg-surface p-5 sm:p-7">
+        <h3 className="font-display text-[17px] font-semibold">Цена порога</h3>
         <p className="mb-3 text-[14px] text-ink-2">
           Доля найденных дропперов при разной доле ложных срабатываний. Банк двигает порог сам: правее — ловим больше, но чаще беспокоим честных.
         </p>
@@ -44,9 +44,9 @@ export function Metrics() {
 
       <div className="grid gap-8 lg:grid-cols-2">
         <div className="min-w-0">
-          <h3 className="mb-2 font-semibold">Кого модель находит и кого беспокоит зря</h3>
-          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-            <table className="w-full min-w-[440px] text-left text-[13px]">
+          <h3 className="mb-3 font-display text-[17px] font-semibold">Кого модель находит и кого беспокоит зря</h3>
+          <div className="overflow-x-auto rounded-[20px] bg-surface">
+            <table className="w-full min-w-[440px] text-left text-[14px]">
               <thead className="border-b border-line text-ink-2">
                 <tr>
                   <th className={cell + ' font-medium'}>Тип счёта</th>
@@ -57,7 +57,7 @@ export function Metrics() {
               </thead>
               {[true, false].map((isDropper) => (
                 <tbody key={String(isDropper)}>
-                  <tr className="border-b border-line bg-paper/60">
+                  <tr className="border-b border-line bg-field">
                     <th colSpan={4} className={cell + ' font-semibold'}>
                       {isDropper ? 'Дропперы — доля найденных' : 'Честные — доля помеченных по ошибке'}
                     </th>
@@ -80,9 +80,9 @@ export function Metrics() {
         </div>
 
         <div className="min-w-0">
-          <h3 className="mb-2 font-semibold">Что даёт сигнал звонка</h3>
-          <div className="overflow-x-auto rounded-lg border border-line bg-surface">
-            <table className="w-full min-w-[440px] text-left text-[13px]">
+          <h3 className="mb-3 font-display text-[17px] font-semibold">Что даёт сигнал звонка</h3>
+          <div className="overflow-x-auto rounded-[20px] bg-surface">
+            <table className="w-full min-w-[440px] text-left text-[14px]">
               <thead className="border-b border-line text-ink-2">
                 <tr>
                   <th className={cell + ' font-medium'}>Переводы</th>
@@ -122,8 +122,8 @@ export function Metrics() {
 
 function Figure(props: { value: string; label: string }) {
   return (
-    <div className="border-t-2 border-ink pt-2">
-      <div className="text-3xl font-semibold">{props.value}</div>
+    <div className="rounded-[20px] bg-surface p-5">
+      <div className="font-display text-[30px] leading-tight font-semibold">{props.value}</div>
       <div className="text-[14px] text-ink-2">{props.label}</div>
     </div>
   )

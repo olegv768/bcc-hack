@@ -13,6 +13,8 @@
     "build": "tsc --noEmit && vite build && node scripts/hosted-output.mjs"
   },
   "dependencies": {
+    "@fontsource-variable/onest": "^5.3.1",
+    "@fontsource-variable/unbounded": "^5.3.0",
     "d3": "^7.9.0",
     "express": "^5.1.0",
     "react": "^19.1.0",

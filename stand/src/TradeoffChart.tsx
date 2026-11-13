@@ -41,18 +41,18 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
         >
           {y.ticks(5).map((tick) => (
             <g key={tick}>
-              <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(tick)} y2={y(tick)} stroke={tick === 0 ? '#c3c2b7' : '#e4e2d9'} />
-              <text x={MARGIN.left - 8} y={y(tick) + 4} fontSize={12} textAnchor="end" fill="#6b6963" className="tabular">
+              <line x1={MARGIN.left} x2={width - MARGIN.right} y1={y(tick)} y2={y(tick)} stroke={tick === 0 ? '#c5cbd8' : '#e6e9f0'} />
+              <text x={MARGIN.left - 8} y={y(tick) + 4} fontSize={12} textAnchor="end" fill="#69728a" className="tabular">
                 {percent(tick, 0)}
               </text>
             </g>
           ))}
           {x.ticks(width < 480 ? 5 : 10).map((tick) => (
-            <text key={tick} x={x(tick)} y={HEIGHT - MARGIN.bottom + 18} fontSize={12} textAnchor="middle" fill="#6b6963" className="tabular">
+            <text key={tick} x={x(tick)} y={HEIGHT - MARGIN.bottom + 18} fontSize={12} textAnchor="middle" fill="#69728a" className="tabular">
               {percent(tick, 0)}
             </text>
           ))}
-          <text x={(MARGIN.left + width - MARGIN.right) / 2} y={HEIGHT - 6} fontSize={12} textAnchor="middle" fill="#4d4b45">
+          <text x={(MARGIN.left + width - MARGIN.right) / 2} y={HEIGHT - 6} fontSize={12} textAnchor="middle" fill="#46506a">
             Честные счета, помеченные по ошибке
           </text>
 
@@ -60,8 +60,8 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
 
           {props.marks.map((mark) => (
             <g key={mark.label}>
-              <circle cx={x(mark.honest_flagged)} cy={y(mark.droppers_found)} r={5} fill="#2a78d6" stroke="#fcfcfb" strokeWidth={2} />
-              <text x={x(mark.honest_flagged) + 10} y={y(mark.droppers_found) + 18} fontSize={12} fill="#16150f">
+              <circle cx={x(mark.honest_flagged)} cy={y(mark.droppers_found)} r={5} fill="#2a78d6" stroke="#ffffff" strokeWidth={2} />
+              <text x={x(mark.honest_flagged) + 10} y={y(mark.droppers_found) + 18} fontSize={12} fill="#0e1b3d">
                 {mark.label}: {percent(mark.droppers_found, 0)} при {percent(mark.honest_flagged)}
               </text>
             </g>
@@ -69,15 +69,15 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
 
           {hover && (
             <g pointerEvents="none">
-              <line x1={x(hover.honest_flagged)} x2={x(hover.honest_flagged)} y1={MARGIN.top} y2={HEIGHT - MARGIN.bottom} stroke="#898781" />
-              <circle cx={x(hover.honest_flagged)} cy={y(hover.droppers_found)} r={4} fill="#2a78d6" stroke="#fcfcfb" strokeWidth={2} />
+              <line x1={x(hover.honest_flagged)} x2={x(hover.honest_flagged)} y1={MARGIN.top} y2={HEIGHT - MARGIN.bottom} stroke="#8a93a8" />
+              <circle cx={x(hover.honest_flagged)} cy={y(hover.droppers_found)} r={4} fill="#2a78d6" stroke="#ffffff" strokeWidth={2} />
             </g>
           )}
         </svg>
       )}
       {hover && (
         <div
-          className="pointer-events-none absolute top-2 rounded border border-line bg-surface px-2.5 py-1.5 text-[13px] shadow-sm"
+          className="pointer-events-none absolute top-2 rounded-[12px] bg-navy px-3 py-2 text-[13px] text-white shadow-lg"
           style={x(hover.honest_flagged) > width / 2 ? { right: width - x(hover.honest_flagged) + 10 } : { left: x(hover.honest_flagged) + 10 }}
         >
           <div>
@@ -86,7 +86,7 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
           <div>
             Ложных среди честных: <b className="tabular">{percent(hover.honest_flagged)}</b>
           </div>
-          <div className="text-muted">порог оценки {hover.threshold.toLocaleString('ru-RU')}</div>
+          <div className="text-white/65">порог оценки {hover.threshold.toLocaleString('ru-RU')}</div>
         </div>
       )}
     </div>

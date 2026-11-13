@@ -36,18 +36,21 @@ const BUTTONS: Record<Lang, { cancel: string; proceed: string; close: string }> 
 const PROCEED_DELAY_SECONDS = 5
 
 const STYLES = `
-.dg-backdrop{position:absolute;inset:0;background:rgba(20,20,18,.45);display:flex;align-items:flex-end;z-index:10}
-.dg-sheet{width:100%;background:#fff;color:#16150f;border-radius:16px 16px 0 0;padding:20px 18px 18px;font:15px/1.45 system-ui,sans-serif;box-sizing:border-box}
-.dg-mark{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:4px;margin-bottom:10px}
-.dg-warn .dg-mark{background:#fdecc0;color:#5b3d00}
-.dg-hold .dg-mark{background:#f9dcdc;color:#7a1414}
-.dg-title{font-size:18px;font-weight:650;line-height:1.25;margin:0 0 8px}
-.dg-body{margin:0 0 16px}
-.dg-button{display:block;width:100%;min-height:46px;border-radius:10px;border:1px solid #16150f;font:inherit;font-weight:600;cursor:pointer}
-.dg-primary{background:#16150f;color:#fff}
-.dg-secondary{background:transparent;color:#16150f;border-color:#c9c7bd;margin-top:8px}
-.dg-secondary:disabled{color:#8d8b82;cursor:default}
-.dg-button:focus-visible{outline:3px solid #2a78d6;outline-offset:2px}
+.dg-backdrop{position:absolute;inset:0;background:rgba(11,22,56,.55);display:flex;align-items:flex-end;z-index:10;animation:dg-fade .2s ease-out}
+@keyframes dg-fade{from{opacity:0}}
+@keyframes dg-rise{from{transform:translateY(24px)}}
+@media (prefers-reduced-motion:reduce){.dg-backdrop,.dg-sheet{animation:none}}
+.dg-sheet{width:100%;background:#fff;color:#0e1b3d;border-radius:28px 28px 0 0;padding:26px 20px 20px;font:inherit;font-size:15px;line-height:1.45;box-sizing:border-box;animation:dg-rise .25s cubic-bezier(.2,.8,.2,1)}
+.dg-mark{display:inline-block;font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;margin-bottom:14px}
+.dg-warn .dg-mark{background:#ffedc2;color:#6b4300}
+.dg-hold .dg-mark{background:#ffe1e1;color:#8f1216}
+.dg-title{font-size:21px;font-weight:650;line-height:1.2;margin:0 0 10px}
+.dg-body{margin:0 0 20px}
+.dg-button{display:block;width:100%;min-height:54px;border-radius:999px;border:0;font:inherit;font-size:16px;font-weight:600;cursor:pointer}
+.dg-primary{background:#0e1b3d;color:#fff}
+.dg-secondary{background:#f1f3f8;color:#0e1b3d;margin-top:8px}
+.dg-secondary:disabled{color:#69728a;cursor:default}
+.dg-button:focus-visible{outline:3px solid #2f5bff;outline-offset:2px}
 `
 
 const MARKS: Record<Lang, { warn: string; hold: string }> = {

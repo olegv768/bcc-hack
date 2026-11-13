@@ -20,21 +20,19 @@ export function ContributionChart(props: { contributions: Record<FeatureKey, num
 
   return (
     <figure className="m-0">
-      <figcaption className="mb-2 text-[13px] text-ink-2">
-        Из чего сложилась оценка. Длина столбика — насколько признак сдвинул оценку.
-      </figcaption>
+      <figcaption className="mb-3 text-[14px] text-ink-2">Длина столбика — насколько признак сдвинул оценку.</figcaption>
       <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-ink-2">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block size-2.5 rounded-sm bg-lower" /> снижает риск
+          <span className="inline-block size-2.5 rounded-full bg-lower" /> снижает риск
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block size-2.5 rounded-sm bg-raise" /> поднимает риск
+          <span className="inline-block size-2.5 rounded-full bg-raise" /> поднимает риск
         </span>
       </div>
       <div ref={ref}>
         {width > 0 && (
           <svg width={width} height={height} role="img" aria-label="Вклад признаков получателя в оценку риска">
-            <line x1={x(0)} x2={x(0)} y1={0} y2={height} stroke="#c3c2b7" />
+            <line x1={x(0)} x2={x(0)} y1={0} y2={height} stroke="#c5cbd8" />
             {FEATURE_KEYS.map((key, i) => {
               const value = props.contributions[key]
               const raw = props.features[key]
@@ -45,7 +43,7 @@ export function ContributionChart(props: { contributions: Record<FeatureKey, num
               return (
                 <g key={key}>
                   <title>{`${raw === null ? key : FEATURE_LABELS[key](raw)} — вклад ${label}`}</title>
-                  <text x={0} y={y + 14} fontSize={13} fill="#16150f">
+                  <text x={0} y={y + 14} fontSize={13} fill="#0e1b3d">
                     {raw === null ? `${key}: не передан` : FEATURE_LABELS[key](raw)}
                   </text>
                   <rect x={0} y={y} width={width} height={ROW} fill="transparent" />
@@ -55,7 +53,7 @@ export function ContributionChart(props: { contributions: Record<FeatureKey, num
                     y={y + 33}
                     fontSize={12}
                     textAnchor={value >= 0 ? 'start' : 'end'}
-                    fill="#4d4b45"
+                    fill="#46506a"
                     className="tabular"
                   >
                     {label}

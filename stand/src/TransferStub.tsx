@@ -11,6 +11,15 @@ const OUTCOME_TEXT: Record<Outcome, { title: string; note: string; className: st
   held: { title: 'Перевод приостановлен', note: 'Деньги остались на счёте клиента до проверки.', className: 'bg-hold-bg text-hold-ink' },
 }
 
+// цвета кружков с первой буквой имени — чтобы получатели различались с одного взгляда
+const AVATAR = [
+  'bg-[#dfe7ff] text-[#1f3fb8]',
+  'bg-[#d8f4e6] text-[#06603a]',
+  'bg-[#ffedc2] text-[#6b4300]',
+  'bg-[#e9e2ff] text-[#4a2fa8]',
+  'bg-[#ffe1e1] text-[#8f1216]',
+]
+
 // Условная заглушка экрана перевода. Вместо неё в банке — его собственное приложение.
 export function TransferStub(props: { onScored: (request: ScoreRequest, response: ScoreResponse) => void }) {
   const phone = useRef<HTMLDivElement>(null)
@@ -39,7 +48,7 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
       recipient: { account_id: scenario.account_id, ...scenario.features },
       context: {
         amount,
-        // на стенде сигнал звонка задаёт переключатель; в приложении его отдаёт нативная часть модуля
+        // на стенде сигналы задают переключатели; в приложении их отдаёт нативная часть модуля
         sender_on_call: callSignal(() => onCall),
         remote_access_active: remoteAccessSignal(() => remoteAccess),
         first_transfer_to_recipient: scenario.first_transfer,
@@ -63,109 +72,118 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
     }
   }
 
-  const field = 'mt-1 block w-full rounded-lg border border-line bg-white px-3 py-2.5 text-[15px]'
-
   return (
-    <div ref={phone} className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-[28px] border-[6px] border-ink bg-white">
-      <form onSubmit={submit} className="flex min-h-[560px] flex-col gap-4 p-5">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Перевод</h3>
-          <label className="text-[13px] text-muted">
-            <span className="sr-only">Язык приложения</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value as Lang)} className="rounded border border-line bg-white px-1.5 py-1 text-ink">
-              <option value="ru">RU</option>
-              <option value="kk">KK</option>
-              <option value="en">EN</option>
-            </select>
-          </label>
-        </div>
-
-        <fieldset>
-          <legend className="mb-1 text-[13px] text-ink-2">Получатель</legend>
-          <div className="overflow-hidden rounded-lg border border-line">
-            {SCENARIOS.map((s) => (
-              <label
-                key={s.id}
-                className={
-                  'flex cursor-pointer items-start gap-2.5 border-b border-line px-3 py-2 last:border-0 ' +
-                  (s.id === scenarioId ? 'bg-paper' : 'bg-white')
-                }
-              >
-                <input
-                  type="radio"
-                  name="recipient"
-                  value={s.id}
-                  checked={s.id === scenarioId}
-                  onChange={() => setScenarioId(s.id)}
-                  className="mt-1 size-4 shrink-0 accent-accent"
-                />
-                <span className="text-[14px] leading-snug">
-                  {s.name}
-                  <span className="block text-[12px] text-muted">
-                    {s.note}
-                    {s.first_transfer ? ' · новый получатель' : ''}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        <label className="text-[13px] text-ink-2">
-          Сумма, ₸
-          <input
-            type="number"
-            inputMode="numeric"
-            min={100}
-            step={100}
-            value={Number.isFinite(amount) ? amount : ''}
-            onChange={(e) => setAmount(e.target.valueAsNumber)}
-            className={field + ' tabular'}
-          />
-          <span className="mt-1 block text-muted">
-            {amountValid ? `обычный перевод этого клиента — ${money(TYPICAL_TRANSFER)}` : 'Введите сумму от 100 ₸'}
+    <div className="mx-auto w-full max-w-[372px] rounded-[46px] bg-navy p-[10px] shadow-[0_30px_60px_-30px_rgb(11_22_56/0.55)]">
+      <div ref={phone} className="relative overflow-hidden rounded-[36px] bg-white">
+        <div className="flex items-center justify-between px-6 pt-3 text-[13px] font-semibold" aria-hidden="true">
+          <span className="tabular">12:30</span>
+          <span className="h-[22px] w-[84px] rounded-full bg-navy" />
+          <span className="h-[11px] w-[20px] rounded-[4px] border-[1.5px] border-ink p-[1.5px]">
+            <span className="block h-full w-3/4 rounded-[1px] bg-ink" />
           </span>
-        </label>
-
-        <fieldset>
-          <legend className="mb-1 text-[13px] text-ink-2">Сигналы клиентского модуля</legend>
-          <div className="overflow-hidden rounded-lg border border-line text-[14px]">
-            <label className="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-2.5">
-              <input type="checkbox" checked={onCall} onChange={(e) => setOnCall(e.target.checked)} className="size-4 shrink-0 accent-accent" />
-              Клиент сейчас на звонке
-            </label>
-            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5">
-              <input
-                type="checkbox"
-                checked={remoteAccess}
-                onChange={(e) => setRemoteAccess(e.target.checked)}
-                className="size-4 shrink-0 accent-accent"
-              />
-              Включён удалённый доступ к телефону
-            </label>
-          </div>
-          <p className="mt-1 text-[12px] text-muted">На стенде — переключатели; в приложении их задаёт сам телефон.</p>
-        </fieldset>
-
-        <div className="mt-auto space-y-3">
-          <div aria-live="polite">
-            {outcome && (
-              <div className={'rounded-lg px-3 py-2.5 text-[14px] ' + OUTCOME_TEXT[outcome].className}>
-                <b>{OUTCOME_TEXT[outcome].title}</b>
-                <span className="block">{OUTCOME_TEXT[outcome].note}</span>
-              </div>
-            )}
-            {error && <div className="rounded-lg bg-hold-bg px-3 py-2.5 text-[14px] text-hold-ink">{error}</div>}
-          </div>
-          <button
-            type="submit"
-            disabled={!amountValid || busy}
-            className="min-h-12 w-full rounded-xl bg-accent font-semibold text-white disabled:opacity-50"
-          >
-            {busy ? 'Проверяем получателя…' : `Перевести ${amountValid ? money(amount) : ''}`}
-          </button>
         </div>
-      </form>
+
+        <form onSubmit={submit} className="flex min-h-[640px] flex-col gap-5 px-5 pt-4 pb-5">
+          <div className="flex items-center justify-between">
+            <h3 className="font-display text-[20px] font-semibold">Перевод</h3>
+            <label>
+              <span className="sr-only">Язык приложения</span>
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as Lang)}
+                className="cursor-pointer rounded-full bg-field px-3 py-1.5 text-[13px] font-semibold"
+              >
+                <option value="ru">RU</option>
+                <option value="kk">KK</option>
+                <option value="en">EN</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="block rounded-[20px] bg-field px-4 py-3 focus-within:ring-2 focus-within:ring-accent">
+            <span className="text-[13px] text-muted">Сумма, ₸</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              min={100}
+              step={100}
+              value={Number.isFinite(amount) ? amount : ''}
+              onChange={(e) => setAmount(e.target.valueAsNumber)}
+              className="tabular block w-full bg-transparent font-display text-[28px] font-semibold outline-none!"
+            />
+            <span className="text-[13px] text-muted">
+              {amountValid ? `обычно этот клиент переводит ${money(TYPICAL_TRANSFER)}` : 'Введите сумму от 100 ₸'}
+            </span>
+          </label>
+
+          <fieldset>
+            <legend className="mb-2 text-[13px] text-muted">Кому</legend>
+            <div className="space-y-1">
+              {SCENARIOS.map((s, i) => {
+                const selected = s.id === scenarioId
+                return (
+                  <label
+                    key={s.id}
+                    className={
+                      'flex cursor-pointer items-center gap-3 rounded-[16px] px-2.5 py-2 ring-2 ring-inset has-focus-visible:ring-accent ' +
+                      (selected ? 'bg-[#eef2ff] ring-accent' : 'ring-transparent hover:bg-field')
+                    }
+                  >
+                    <input type="radio" name="recipient" value={s.id} checked={selected} onChange={() => setScenarioId(s.id)} className="sr-only" />
+                    <span
+                      className={'grid size-10 shrink-0 place-items-center rounded-full text-[15px] font-semibold ' + AVATAR[i % AVATAR.length]}
+                      aria-hidden="true"
+                    >
+                      {s.name.replace(/[«»]/g, '').charAt(0)}
+                    </span>
+                    <span className="min-w-0 text-[15px] leading-tight font-medium">
+                      {s.name}
+                      <span className="block text-[13px] font-normal text-muted">
+                        {s.note}
+                        {s.first_transfer ? ', новый получатель' : ''}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend className="mb-2 text-[13px] text-muted">Что сообщает телефон</legend>
+            <div className="divide-y divide-line rounded-[20px] bg-field px-4 text-[15px]">
+              <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+                Клиент на звонке
+                <input type="checkbox" className="switch" checked={onCall} onChange={(e) => setOnCall(e.target.checked)} />
+              </label>
+              <label className="flex cursor-pointer items-center justify-between gap-3 py-3">
+                Включён удалённый доступ
+                <input type="checkbox" className="switch" checked={remoteAccess} onChange={(e) => setRemoteAccess(e.target.checked)} />
+              </label>
+            </div>
+            <p className="mt-1.5 text-[12px] text-muted">На стенде это переключатели, в приложении — сам телефон.</p>
+          </fieldset>
+
+          <div className="mt-auto space-y-3">
+            <div aria-live="polite">
+              {outcome && (
+                <div className={'rounded-[16px] px-4 py-3 text-[14px] ' + OUTCOME_TEXT[outcome].className}>
+                  <b>{OUTCOME_TEXT[outcome].title}</b>
+                  <span className="block">{OUTCOME_TEXT[outcome].note}</span>
+                </div>
+              )}
+              {error && <div className="rounded-[16px] bg-hold-bg px-4 py-3 text-[14px] text-hold-ink">{error}</div>}
+            </div>
+            <button
+              type="submit"
+              disabled={!amountValid || busy}
+              className="min-h-14 w-full cursor-pointer rounded-full bg-accent text-[16px] font-semibold text-white transition-transform active:scale-[0.98] disabled:cursor-default disabled:opacity-50"
+            >
+              {busy ? 'Проверяем получателя…' : `Перевести ${amountValid ? money(amount) : ''}`}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

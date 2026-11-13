@@ -1,22 +1,30 @@
+@import '@fontsource-variable/onest';
+@import '@fontsource-variable/unbounded';
 @import 'tailwindcss';
 
 @theme {
-  --color-paper: #f4f2ea;
-  --color-surface: #fcfcfb;
-  --color-ink: #16150f;
-  --color-ink-2: #4d4b45;
-  --color-muted: #6b6963;
-  --color-line: #d9d6cb;
-  --color-accent: #0e5a52;
+  --color-paper: #eef1f6;
+  --color-surface: #ffffff;
+  --color-navy: #0b1638;
+  --color-ink: #0e1b3d;
+  --color-ink-2: #46506a;
+  --color-muted: #69728a;
+  --color-line: #dde2ec;
+  --color-field: #f1f3f8;
+  --color-accent: #2f5bff;
   --color-raise: #d03b3b;
   --color-lower: #2a78d6;
-  --color-allow-bg: #dcf0dc;
-  --color-allow-ink: #0b4f0b;
-  --color-warn-bg: #fdecc0;
-  --color-warn-ink: #5b3d00;
-  --color-hold-bg: #f9dcdc;
-  --color-hold-ink: #7a1414;
-  --font-sans: 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --color-allow: #0b8250;
+  --color-warn: #f5a300;
+  --color-hold: #d32b31;
+  --color-allow-bg: #d8f4e6;
+  --color-allow-ink: #06603a;
+  --color-warn-bg: #ffedc2;
+  --color-warn-ink: #6b4300;
+  --color-hold-bg: #ffe1e1;
+  --color-hold-ink: #8f1216;
+  --font-sans: 'Onest Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Unbounded Variable', 'Onest Variable', system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 }
 
@@ -28,7 +36,7 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: 16px;
   line-height: 1.5;
 }
 
@@ -43,10 +51,175 @@ select:focus-visible,
 input:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 3px solid var(--color-lower);
+  outline: 3px solid var(--color-accent);
   outline-offset: 2px;
 }
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+/* --- маршрут перевода в шапке: приложение → сервис → аналитик --- */
+
+.rail {
+  position: relative;
+  display: grid;
+  gap: 18px;
+}
+
+.rail-station {
+  position: relative;
+  padding-left: 34px;
+}
+
+.rail-node {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgb(255 255 255 / 0.45);
+  background: var(--color-navy);
+  transition:
+    background-color 0.3s 0.5s,
+    border-color 0.3s 0.5s;
+}
+
+.rail-node[data-tone='allow'] {
+  background: var(--color-allow);
+  border-color: var(--color-allow);
+}
+.rail-node[data-tone='warn'] {
+  background: var(--color-warn);
+  border-color: var(--color-warn);
+}
+.rail-node[data-tone='hold'] {
+  background: var(--color-hold);
+  border-color: var(--color-hold);
+}
+.rail-node[data-tone='on'] {
+  background: #fff;
+  border-color: #fff;
+}
+
+.rail-line,
+.rail-pulse {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .rail {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
+  }
+  .rail-station {
+    padding: 34px 28px 0 0;
+  }
+  .rail-node {
+    top: 0;
+  }
+  .rail-line {
+    display: block;
+    position: absolute;
+    left: 20px;
+    top: 9px;
+    width: calc(66.666% - 20px);
+    height: 2px;
+    background: rgb(255 255 255 / 0.22);
+  }
+  .rail-pulse {
+    display: block;
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 0 5px rgb(255 255 255 / 0.18);
+    opacity: 0;
+  }
+  .rail-pulse[data-run='service'] {
+    animation: to-service 0.6s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+  }
+  .rail-pulse[data-run='analyst'] {
+    animation: to-analyst 1.3s cubic-bezier(0.5, 0, 0.2, 1) forwards;
+  }
+}
+
+@keyframes to-service {
+  0% {
+    left: 3px;
+    opacity: 1;
+  }
+  85% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(33.333% + 3px);
+    opacity: 0;
+  }
+}
+
+@keyframes to-analyst {
+  0% {
+    left: 3px;
+    opacity: 1;
+  }
+  42%,
+  56% {
+    left: calc(33.333% + 3px);
+    opacity: 1;
+  }
+  92% {
+    opacity: 1;
+  }
+  100% {
+    left: calc(66.666% + 3px);
+    opacity: 0;
+  }
+}
+
+/* --- переключатель в заглушке приложения --- */
+
+.switch {
+  appearance: none;
+  flex-shrink: 0;
+  width: 46px;
+  height: 28px;
+  border-radius: 999px;
+  background: #cfd5e2;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(11 22 56 / 0.3);
+  transition: transform 0.2s;
+}
+.switch:checked {
+  background: var(--color-accent);
+}
+.switch:checked::after {
+  transform: translateX(18px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-pulse {
+    animation: none !important;
+  }
+  .rail-node,
+  .switch,
+  .switch::after {
+    transition: none;
+  }
 }

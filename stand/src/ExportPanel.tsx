@@ -46,20 +46,20 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
     props.onChanged()
   }
 
-  const button = 'min-h-10 rounded-lg border border-ink px-3 text-[14px] font-medium disabled:opacity-50'
+  const button = 'min-h-11 cursor-pointer rounded-full px-5 text-[15px] font-semibold disabled:cursor-default disabled:opacity-50'
   const link = 'text-accent underline underline-offset-2'
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={runBatch} disabled={progress !== null} className={button}>
+        <button type="button" onClick={runBatch} disabled={progress !== null} className={button + ' bg-ink text-white'}>
           {progress ?? `Прогнать ${BATCH_HONEST + BATCH_FRAUD} случайных переводов`}
         </button>
-        <button type="button" onClick={clear} disabled={progress !== null || !props.items?.length} className={button + ' border-line'}>
+        <button type="button" onClick={clear} disabled={progress !== null || !props.items?.length} className={button + ' bg-surface text-ink'}>
           Очистить список
         </button>
       </div>
-      {(batchError || props.error) && <p className="rounded-lg bg-hold-bg px-3 py-2 text-hold-ink">{batchError || props.error}</p>}
+      {(batchError || props.error) && <p className="rounded-[16px] bg-hold-bg px-4 py-3 text-hold-ink">{batchError || props.error}</p>}
 
       <p className="text-[14px] text-ink-2">
         Скачать:{' '}
@@ -87,34 +87,34 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
       {props.items === null ? (
         !props.error && <p className="text-ink-2">Загружаем…</p>
       ) : props.items.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-line p-5 text-ink-2">
+        <p className="rounded-[20px] bg-surface p-6 text-ink-2">
           Пока пусто. Счёт попадает в выгрузку, когда сервис рекомендует предупредить клиента или придержать перевод.
         </p>
       ) : (
-        <div className="max-h-[460px] overflow-auto rounded-lg border border-line bg-surface">
-          <table className="w-full min-w-[540px] text-left text-[13px]">
+        <div className="max-h-[480px] overflow-auto rounded-[20px] bg-surface">
+          <table className="w-full min-w-[540px] text-left text-[14px]">
             <thead className="sticky top-0 border-b border-line bg-surface text-ink-2 shadow-[0_1px_0_var(--color-line)]">
               <tr>
-                <th className="px-3 py-2 font-medium">Счёт</th>
-                <th className="px-3 py-2 text-right font-medium">Риск</th>
-                <th className="px-3 py-2 font-medium">Решение</th>
-                <th className="px-3 py-2 text-right font-medium">Переводы</th>
-                <th className="px-3 py-2 font-medium">Причины</th>
+                <th className="px-4 py-3 font-medium">Счёт</th>
+                <th className="px-4 py-3 text-right font-medium">Риск</th>
+                <th className="px-4 py-3 font-medium">Решение</th>
+                <th className="px-4 py-3 text-right font-medium">Переводы</th>
+                <th className="px-4 py-3 font-medium">Причины</th>
               </tr>
             </thead>
             <tbody>
               {props.items.map((item) => (
                 <tr key={item.account_id} className="border-b border-line align-top last:border-0">
-                  <td className="px-3 py-2 font-mono">{item.account_id}</td>
-                  <td className="tabular px-3 py-2 text-right">{item.max_risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                  <td className="px-3 py-2">
+                  <td className="px-4 py-3 font-mono">{item.account_id}</td>
+                  <td className="tabular px-4 py-3 text-right">{item.max_risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="px-4 py-3">
                     <ActionBadge action={item.last_action} />
                   </td>
-                  <td className="tabular px-3 py-2 text-right whitespace-nowrap">
+                  <td className="tabular px-4 py-3 text-right whitespace-nowrap">
                     {item.flagged_transfers} шт.
                     <span className="block text-muted">{money(item.flagged_amount)}</span>
                   </td>
-                  <td className="min-w-[220px] px-3 py-2">
+                  <td className="min-w-[220px] px-4 py-3">
                     <ul className="list-disc space-y-0.5 pl-4">
                       {item.reasons.map((reason) => (
                         <li key={reason}>{reason}</li>
