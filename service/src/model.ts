@@ -20,6 +20,7 @@ export type ReasonCode =
   | 'FAST_OUTFLOW'
   | 'SHARED_DEVICE'
   | 'ON_CALL'
+  | 'REMOTE_ACCESS'
   | 'FIRST_TRANSFER'
   | 'UNUSUAL_AMOUNT'
 
@@ -64,14 +65,16 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   const { risk, contributions, missing } = scoreRecipient(model, features)
   const { soft, warn, hold } = model.thresholds
 
-  // Типичная картина обмана: клиента ведут по телефону на счёт, куда он раньше не переводил.
-  const underPressure = context.sender_on_call === true && context.first_transfer_to_recipient
+  // Типичная картина обмана: клиента ведут по телефону или управляют его телефоном удалённо,
+  // и деньги уходят на счёт, куда он раньше не переводил.
+  const remoteAccess = context.remote_access_active === true
+  const underPressure = (context.sender_on_call === true || remoteAccess) && context.first_transfer_to_recipient
   const unusualAmount = (context.amount_to_typical_ratio ?? 0) >= UNUSUAL_AMOUNT_RATIO
 
   let action: Action = 'allow'
   if (risk >= hold) action = 'hold'
   else if (risk >= warn) action = underPressure ? 'hold' : 'warn'
-  else if (underPressure && (risk >= soft || unusualAmount)) action = 'warn'
+  else if (underPressure && (risk >= soft || unusualAmount || remoteAccess)) action = 'warn'
 
   const reasons: Reason[] = FEATURE_KEYS.filter((key) => contributions[key] >= MIN_CONTRIBUTION)
     .sort((a, b) => contributions[b] - contributions[a])
@@ -79,6 +82,7 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
 
   // Обстоятельства перевода показываем, только когда есть о чём предупреждать.
   if (action !== 'allow') {
+    if (remoteAccess) reasons.push({ code: 'REMOTE_ACCESS', value: null, contribution: null })
     if (context.sender_on_call) reasons.push({ code: 'ON_CALL', value: null, contribution: null })
     if (context.first_transfer_to_recipient) reasons.push({ code: 'FIRST_TRANSFER', value: null, contribution: null })
     if (unusualAmount) reasons.push({ code: 'UNUSUAL_AMOUNT', value: context.amount_to_typical_ratio, contribution: null })

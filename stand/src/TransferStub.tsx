@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { callSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
+import { callSignal, remoteAccessSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
 import { score, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { money, SCENARIOS, TYPICAL_TRANSFER } from './scenarios.ts'
 
@@ -17,6 +17,7 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
   const [scenarioId, setScenarioId] = useState('fresh')
   const [amount, setAmount] = useState(450000)
   const [onCall, setOnCall] = useState(true)
+  const [remoteAccess, setRemoteAccess] = useState(false)
   const [lang, setLang] = useState<Lang>('ru')
   const [busy, setBusy] = useState(false)
   const [outcome, setOutcome] = useState<Outcome | null>(null)
@@ -40,6 +41,7 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
         amount,
         // на стенде сигнал звонка задаёт переключатель; в приложении его отдаёт нативная часть модуля
         sender_on_call: callSignal(() => onCall),
+        remote_access_active: remoteAccessSignal(() => remoteAccess),
         first_transfer_to_recipient: scenario.first_transfer,
         amount_to_typical_ratio: Math.round((amount / TYPICAL_TRANSFER) * 10) / 10,
       },
@@ -65,7 +67,7 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
 
   return (
     <div ref={phone} className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-[28px] border-[6px] border-ink bg-white">
-      <form onSubmit={submit} className="flex min-h-[520px] flex-col gap-4 p-5">
+      <form onSubmit={submit} className="flex min-h-[560px] flex-col gap-4 p-5">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold">Перевод</h3>
           <label className="text-[13px] text-muted">
@@ -78,19 +80,36 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
           </label>
         </div>
 
-        <label className="text-[13px] text-ink-2">
-          Получатель
-          <select value={scenarioId} onChange={(e) => setScenarioId(e.target.value)} className={field}>
+        <fieldset>
+          <legend className="mb-1 text-[13px] text-ink-2">Получатель</legend>
+          <div className="overflow-hidden rounded-lg border border-line">
             {SCENARIOS.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
+              <label
+                key={s.id}
+                className={
+                  'flex cursor-pointer items-start gap-2.5 border-b border-line px-3 py-2 last:border-0 ' +
+                  (s.id === scenarioId ? 'bg-paper' : 'bg-white')
+                }
+              >
+                <input
+                  type="radio"
+                  name="recipient"
+                  value={s.id}
+                  checked={s.id === scenarioId}
+                  onChange={() => setScenarioId(s.id)}
+                  className="mt-1 size-4 shrink-0 accent-accent"
+                />
+                <span className="text-[14px] leading-snug">
+                  {s.name}
+                  <span className="block text-[12px] text-muted">
+                    {s.note}
+                    {s.first_transfer ? ' · новый получатель' : ''}
+                  </span>
+                </span>
+              </label>
             ))}
-          </select>
-          <span className="mt-1 block text-muted">
-            {scenario.note} · {scenario.first_transfer ? 'раньше не переводил' : 'переводил раньше'}
-          </span>
-        </label>
+          </div>
+        </fieldset>
 
         <label className="text-[13px] text-ink-2">
           Сумма, ₸
@@ -108,13 +127,25 @@ export function TransferStub(props: { onScored: (request: ScoreRequest, response
           </span>
         </label>
 
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line p-3 text-[14px]">
-          <input type="checkbox" checked={onCall} onChange={(e) => setOnCall(e.target.checked)} className="mt-1 size-4 accent-accent" />
-          <span>
-            Клиент сейчас на звонке
-            <span className="block text-[13px] text-muted">на стенде — переключатель; в приложении сигнал даёт клиентский модуль</span>
-          </span>
-        </label>
+        <fieldset>
+          <legend className="mb-1 text-[13px] text-ink-2">Сигналы клиентского модуля</legend>
+          <div className="overflow-hidden rounded-lg border border-line text-[14px]">
+            <label className="flex cursor-pointer items-center gap-2.5 border-b border-line px-3 py-2.5">
+              <input type="checkbox" checked={onCall} onChange={(e) => setOnCall(e.target.checked)} className="size-4 shrink-0 accent-accent" />
+              Клиент сейчас на звонке
+            </label>
+            <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2.5">
+              <input
+                type="checkbox"
+                checked={remoteAccess}
+                onChange={(e) => setRemoteAccess(e.target.checked)}
+                className="size-4 shrink-0 accent-accent"
+              />
+              Включён удалённый доступ к телефону
+            </label>
+          </div>
+          <p className="mt-1 text-[12px] text-muted">На стенде — переключатели; в приложении их задаёт сам телефон.</p>
+        </fieldset>
 
         <div className="mt-auto space-y-3">
           <div aria-live="polite">

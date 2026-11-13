@@ -18,7 +18,7 @@ let url = ''
 let close = () => {}
 
 beforeAll(async () => {
-  const server = createApp({ model, dataFile, demo: true }).listen(0, '127.0.0.1')
+  const server = createApp({ model, dataFile, openapi: 'openapi: 3.0.3', demo: true }).listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
   url = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   close = () => server.close()
@@ -62,6 +62,17 @@ describe('POST /score', () => {
     expect(body.client_message.title).toContain('телефонмен')
   })
 
+  test('удалённый доступ и новый получатель дают предупреждение даже при обычной сумме', async () => {
+    const context = { amount: 20000, sender_on_call: false, remote_access_active: true, first_transfer_to_recipient: true, amount_to_typical_ratio: 1 }
+    const body = await (await score({ recipient: { ...friend, account_id: 'tok_remote' }, context })).json()
+    expect(body.action).toBe('warn')
+    expect(body.reasons.map((r: { code: string }) => r.code)).toContain('REMOTE_ACCESS')
+    expect(body.client_message.title).toContain('удалённо')
+
+    const known = await (await score({ recipient: friend, context: { ...context, first_transfer_to_recipient: false } })).json()
+    expect(known.action).toBe('allow')
+  })
+
   test('отсутствующие признаки не ломают оценку и перечислены в ответе', async () => {
     const body = await (await score({ recipient: { account_id: 'tok_x', account_age_days: 2 }, context: calm })).json()
     expect(body.missing_features).toEqual(['unrelated_senders_7d', 'fast_outflow_share_7d', 'shared_device_accounts'])
@@ -100,7 +111,7 @@ describe('выгрузка для аналитика', () => {
 })
 
 test('с заданным ключом запросы без X-API-Key отклоняются', async () => {
-  const server = createApp({ model, dataFile, apiKey: 'secret' }).listen(0, '127.0.0.1')
+  const server = createApp({ model, dataFile, openapi: 'openapi: 3.0.3', apiKey: 'secret' }).listen(0, '127.0.0.1')
   await new Promise((resolve) => server.once('listening', resolve))
   const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
   expect((await fetch(base + '/flagged')).status).toBe(401)

@@ -22,6 +22,7 @@ export function transform(key: FeatureKey, value: number): number {
 export type TransferContext = {
   amount: number
   sender_on_call: boolean | null // сигнал клиентского модуля; null — модуль не подключён
+  remote_access_active: boolean | null // телефоном могут управлять удалённо (AnyDesk и подобные); null — не проверялось
   first_transfer_to_recipient: boolean
   amount_to_typical_ratio: number | null // сумма перевода / обычный перевод этого клиента
 }

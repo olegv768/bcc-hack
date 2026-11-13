@@ -41,7 +41,8 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
   }
 
   async function clear() {
-    await clearFlagged()
+    setBatchError('')
+    await clearFlagged().catch((e: Error) => setBatchError(e.message))
     props.onChanged()
   }
 
@@ -76,6 +77,13 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         . Фильтры: <code className="font-mono text-[13px]">?min_risk=0.9&amp;action=hold&amp;since=2026-11-01T00:00:00Z</code>
       </p>
 
+      {props.items && props.items.length > 0 && (
+        <p className="text-[14px]">
+          Помечено счетов: <b className="tabular">{props.items.length}</b>, из них к приостановке —{' '}
+          <b className="tabular">{props.items.filter((a) => a.last_action === 'hold').length}</b>
+        </p>
+      )}
+
       {props.items === null ? (
         !props.error && <p className="text-ink-2">Загружаем…</p>
       ) : props.items.length === 0 ? (
@@ -84,14 +92,13 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         </p>
       ) : (
         <div className="max-h-[460px] overflow-auto rounded-lg border border-line bg-surface">
-          <table className="w-full min-w-[760px] text-left text-[13px]">
+          <table className="w-full min-w-[540px] text-left text-[13px]">
             <thead className="sticky top-0 border-b border-line bg-surface text-ink-2 shadow-[0_1px_0_var(--color-line)]">
               <tr>
-                <th className="px-3 py-2 font-medium">Счёт (псевдоним)</th>
+                <th className="px-3 py-2 font-medium">Счёт</th>
                 <th className="px-3 py-2 text-right font-medium">Риск</th>
                 <th className="px-3 py-2 font-medium">Решение</th>
-                <th className="px-3 py-2 text-right font-medium">Переводов</th>
-                <th className="px-3 py-2 text-right font-medium">Сумма</th>
+                <th className="px-3 py-2 text-right font-medium">Переводы</th>
                 <th className="px-3 py-2 font-medium">Причины</th>
               </tr>
             </thead>
@@ -103,9 +110,17 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
                   <td className="px-3 py-2">
                     <ActionBadge action={item.last_action} />
                   </td>
-                  <td className="tabular px-3 py-2 text-right">{item.flagged_transfers}</td>
-                  <td className="tabular px-3 py-2 text-right whitespace-nowrap">{money(item.flagged_amount)}</td>
-                  <td className="px-3 py-2">{item.reasons.join('; ')}</td>
+                  <td className="tabular px-3 py-2 text-right whitespace-nowrap">
+                    {item.flagged_transfers} шт.
+                    <span className="block text-muted">{money(item.flagged_amount)}</span>
+                  </td>
+                  <td className="min-w-[220px] px-3 py-2">
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      {item.reasons.map((reason) => (
+                        <li key={reason}>{reason}</li>
+                      ))}
+                    </ul>
+                  </td>
                 </tr>
               ))}
             </tbody>

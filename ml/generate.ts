@@ -108,6 +108,7 @@ export function generateContext(isFraud: boolean, rng: Rng): TransferContext {
   return {
     amount: Math.round((ratio * lognormal(rng, 25000, 0.6)) / 100) * 100,
     sender_on_call: rng() < a.on_call,
+    remote_access_active: null, // в расчёт метрик не входит: данных о доле таких переводов нет
     first_transfer_to_recipient: rng() < a.first_transfer,
     amount_to_typical_ratio: Math.round(ratio * 10) / 10,
   }

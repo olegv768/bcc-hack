@@ -23,7 +23,20 @@ export type ScoreResponse = {
   model_version: string
 }
 
-const UNAVAILABLE = 'Сервис оценки не отвечает. Проверьте, что он запущен: npm run dev'
+const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname)
+const UNAVAILABLE = LOCAL
+  ? 'Сервис оценки не отвечает. Проверьте, что он запущен: npm run dev'
+  : 'Сервис оценки не отвечает. Попробуйте ещё раз через минуту.'
+
+// Ответ сервиса — всегда JSON. Если пришло что-то другое (страница ошибки хостинга, прокси),
+// значит до сервиса запрос не дошёл.
+async function readJson(response: Response | null) {
+  if (!response || response.status >= 500) throw new Error(UNAVAILABLE)
+  const body = await response.json().catch(() => null)
+  if (body === null) throw new Error(UNAVAILABLE)
+  if (!response.ok) throw new Error(body.message ?? 'Сервис отклонил запрос')
+  return body
+}
 
 export async function score(request: ScoreRequest): Promise<ScoreResponse> {
   const response = await fetch('/api/score', {
@@ -31,18 +44,14 @@ export async function score(request: ScoreRequest): Promise<ScoreResponse> {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),
   }).catch(() => null)
-  if (!response || response.status >= 500) throw new Error(UNAVAILABLE)
-  const body = await response.json()
-  if (!response.ok) throw new Error(body.message ?? 'Сервис отклонил запрос')
-  return body
+  return readJson(response)
 }
 
 export async function loadFlagged(): Promise<FlaggedAccount[]> {
-  const response = await fetch('/api/flagged').catch(() => null)
-  if (!response?.ok) throw new Error(UNAVAILABLE)
-  return (await response.json()).items
+  return (await readJson(await fetch('/api/flagged').catch(() => null))).items
 }
 
 export async function clearFlagged(): Promise<void> {
-  await fetch('/api/flagged', { method: 'DELETE' })
+  const response = await fetch('/api/flagged', { method: 'DELETE' }).catch(() => null)
+  if (!response?.ok) throw new Error(UNAVAILABLE)
 }

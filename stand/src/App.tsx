@@ -3,6 +3,7 @@ import type { FlaggedAccount } from '../../service/src/store.ts'
 import { loadFlagged, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
+import { ACTION_LABELS, money } from './scenarios.ts'
 import { ScorePanel } from './ScorePanel.tsx'
 import { TransferStub } from './TransferStub.tsx'
 
@@ -33,8 +34,31 @@ export function App() {
         </p>
       </header>
 
+      <ol className="mb-10 grid overflow-hidden rounded-xl border border-line bg-surface sm:grid-cols-3" aria-label="Путь перевода">
+        <FlowNode
+          number={1}
+          title="Приложение банка"
+          text={request ? `Перевод ${money(request.context.amount)}${signals(request)}` : 'Клиент нажимает «Перевести»'}
+        />
+        <FlowNode
+          number={2}
+          title="Сервис оценки"
+          text={
+            response
+              ? `Риск ${response.risk.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} — ${ACTION_LABELS[response.action].toLowerCase()}`
+              : 'Отвечает риском и рекомендацией'
+          }
+          tone={response?.action}
+        />
+        <FlowNode
+          number={3}
+          title="Аналитик"
+          text={flagged ? `Помеченных счетов в выгрузке: ${flagged.length}` : 'Получает помеченные счета'}
+        />
+      </ol>
+
       <div className="grid gap-x-10 gap-y-12 lg:grid-cols-[360px_1fr]">
-        <Step number={1} title="Приложение банка" note="Условная заглушка экрана перевода с подключённым клиентским модулем.">
+        <Step number={1} sticky title="Приложение банка" note="Условная заглушка экрана перевода с подключённым клиентским модулем.">
           <TransferStub
             onScored={(req, res) => {
               setRequest(req)
@@ -71,9 +95,31 @@ export function App() {
   )
 }
 
-function Step(props: { number: number; title: string; note: string; children: React.ReactNode }) {
+function signals(request: ScoreRequest): string {
+  const parts = []
+  if (request.context.sender_on_call) parts.push('на звонке')
+  if (request.context.remote_access_active) parts.push('удалённый доступ')
+  return parts.length ? ', ' + parts.join(', ') : ''
+}
+
+const TONE = { allow: 'bg-allow-bg', warn: 'bg-warn-bg', hold: 'bg-hold-bg' }
+
+function FlowNode(props: { number: number; title: string; text: string; tone?: keyof typeof TONE }) {
   return (
-    <section className="min-w-0">
+    <li className={'border-b border-line px-4 py-3 last:border-0 sm:border-r sm:border-b-0 ' + (props.tone ? TONE[props.tone] : '')}>
+      <div className="text-[13px] text-ink-2">
+        <span className="tabular">{props.number}</span> · {props.title}
+      </div>
+      <div className="font-medium" aria-live="polite">
+        {props.text}
+      </div>
+    </li>
+  )
+}
+
+function Step(props: { number: number; title: string; note: string; sticky?: boolean; children: React.ReactNode }) {
+  return (
+    <section className={'min-w-0 ' + (props.sticky ? '[@media(min-height:860px)]:lg:sticky lg:top-6 lg:self-start' : '')}>
       <h2 className="flex items-baseline gap-2.5 text-xl font-semibold">
         <span className="tabular text-muted">{props.number}</span>
         {props.title}

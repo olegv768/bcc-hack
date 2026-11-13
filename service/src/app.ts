@@ -2,7 +2,6 @@
 
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
-import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import { FEATURE_KEYS } from './features.ts'
 import { decide, riskLevel, type Model } from './model.ts'
@@ -25,6 +24,7 @@ const ScoreRequest = z.object({
   context: z.object({
     amount: z.number().positive().max(1e12),
     sender_on_call: z.boolean().nullable().default(null),
+    remote_access_active: z.boolean().nullable().default(null),
     first_transfer_to_recipient: z.boolean().default(false),
     amount_to_typical_ratio: z.number().min(0).max(1e6).nullable().default(null),
   }),
@@ -37,7 +37,7 @@ const FlaggedQuery = z.object({
   separator: z.enum(['comma', 'semicolon']).default('comma'),
 })
 
-export function createApp(options: { model: Model; dataFile: string; apiKey?: string; demo?: boolean }) {
+export function createApp(options: { model: Model; dataFile: string; openapi: string; apiKey?: string; demo?: boolean }) {
   const { model } = options
   const store = createStore(options.dataFile)
   const app = express()
@@ -49,7 +49,7 @@ export function createApp(options: { model: Model; dataFile: string; apiKey?: st
   })
 
   app.get('/openapi.yaml', (_req, res) => {
-    res.type('text/yaml').send(readFileSync(new URL('../../docs/openapi.yaml', import.meta.url), 'utf8'))
+    res.type('text/yaml').send(options.openapi)
   })
 
   // Если задан SCORE_API_KEY, все остальные запросы должны нести его в заголовке X-API-Key.
@@ -93,7 +93,7 @@ export function createApp(options: { model: Model; dataFile: string; apiKey?: st
       risk_level: riskLevel(model, result.risk),
       action: result.action,
       reasons,
-      client_message: clientMessage(result.action, context.sender_on_call === true, lang),
+      client_message: clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true }, lang),
       // вклад каждого признака в оценку — чтобы аналитик видел, из чего она сложилась
       contributions: Object.fromEntries(FEATURE_KEYS.map((key) => [key, Math.round(result.contributions[key] * 100) / 100])),
       missing_features: result.missing,

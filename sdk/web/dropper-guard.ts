@@ -1,6 +1,7 @@
 // Клиентский модуль для веб-части приложения (WebView, гибридное приложение, интернет-банк).
 // Делает две вещи:
-//   1. callSignal() — отдаёт признак «клиент сейчас на звонке», приложение кладёт его в запрос перевода;
+//   1. callSignal() и remoteAccessSignal() — отдают признаки «клиент на звонке» и «телефоном управляют
+//      удалённо», приложение кладёт их в запрос перевода;
 //   2. showWarning() — показывает предупреждение, которое вернул сервис оценки, и ждёт выбор клиента.
 // Модуль сам никуда не ходит по сети и ничего не хранит.
 
@@ -18,6 +19,11 @@ export function callSignal(bridge?: () => boolean | null): boolean | null {
   } catch {
     return null
   }
+}
+
+// То же для признака «телефоном могут управлять удалённо» (Android: sdk/android/RemoteAccessSignal.kt).
+export function remoteAccessSignal(bridge?: () => boolean | null): boolean | null {
+  return callSignal(bridge)
 }
 
 const BUTTONS: Record<Lang, { cancel: string; proceed: string; close: string }> = {
