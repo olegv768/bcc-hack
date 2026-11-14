@@ -4,7 +4,7 @@
 //   npm run train -- --export образец.csv   — сохранить синтетические счета как образец формата
 //
 // Шаги: обучаем на 60% счетов, подбираем пороги на 20%, считаем метрики на оставшихся 20%,
-// которых модель не видела. Рядом обучаем прежнюю модель (логистическую регрессию) для сравнения.
+// которых модель не видела. Для синтетики рядом считаем потолок — результат идеальной модели.
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
@@ -13,7 +13,6 @@ import { idealScore } from './ceiling.ts'
 import { readCsv, writeCsv } from './data.ts'
 import { fitEbm } from './ebm.ts'
 import { CAREFUL_DROPPER_MIX, DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccounts, generateContext, type Account } from './generate.ts'
-import { fitLogistic, scoreLogistic } from './logistic.ts'
 import { createRng } from './random.ts'
 
 const SEED = 20261112
@@ -68,7 +67,6 @@ const model: Model = {
   terms: fit.terms.map((term) => ({ ...term, features: term.features.map((j) => FEATURE_KEYS[j]!) })),
   thresholds: { soft: 0, warn: 0, hold: 0 },
 }
-const logistic = fitLogistic(train, labels, weights)
 
 // --- пороги и метрики ---
 
@@ -140,15 +138,12 @@ function evaluate(score: Scorer, thresholds: Thresholds, items: Account[], withI
 }
 
 const ebmScore: Scorer = (features) => scoreRecipient(model, features).risk
-const logisticScore: Scorer = (features) => scoreLogistic(logistic, features)
 model.thresholds = thresholdsFor(ebmScore)
-const logisticThresholds = thresholdsFor(logisticScore)
 
 const result = evaluate(ebmScore, model.thresholds, test, true)
 // потолок: модель, которая знает формулы генератора (есть только для синтетики)
 const idealThresholds = dataFile ? null : thresholdsFor(idealScore)
 const ceiling = idealThresholds && evaluate(idealScore, idealThresholds, test)
-const baseline = evaluate(logisticScore, logisticThresholds, test)
 
 const scored = test.map((a) => ({ ...a, risk: ebmScore(a.features) }))
 const droppers = scored.filter((a) => a.is_dropper)
@@ -173,7 +168,6 @@ const stress = shifted && {
   dropper_mix: Object.fromEntries(CAREFUL_DROPPER_MIX),
   droppers: shifted.filter((a) => a.is_dropper).length,
   model: evaluate(ebmScore, model.thresholds, shifted),
-  baseline: evaluate(logisticScore, logisticThresholds, shifted),
   // идеальная модель тоже «не знает» о смене тактики: формулы и пороги у неё от прежних данных
   ceiling: evaluate(idealScore, idealThresholds!, shifted),
 }
@@ -226,7 +220,6 @@ const metrics = {
   auc: result.auc,
   thresholds: model.thresholds,
   account_level: result.account_level,
-  baseline: { name: 'Логистическая регрессия', auc: baseline.auc, account_level: baseline.account_level },
   ceiling: ceiling && { name: 'Идеальная модель', auc: ceiling.auc, account_level: ceiling.account_level },
   by_kind: byKind,
   stress,
@@ -258,7 +251,7 @@ console.log(`Данные: ${dataFile ?? 'синтетические'}, счет
 console.log(`Пороги новой модели:`, model.thresholds)
 console.log(`\nОтложенная выборка: ${droppers.length} дропперов, ${honest.length} честных`)
 console.log(`                         AUC    warn: найдено / ложных    hold: найдено / ложных`)
-for (const [name, r] of [['объяснимый бустинг', result], ['логистическая регр.', baseline], ...(ceiling ? [['потолок (идеал)', ceiling] as const] : [])] as const) {
+for (const [name, r] of [['объяснимый бустинг', result], ...(ceiling ? [['потолок (идеал)', ceiling] as const] : [])] as const) {
   const [w, h] = r.account_level
   console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
 }
@@ -270,7 +263,7 @@ console.log('\nПо типам счетов (доля выше порога warn
 for (const k of byKind) console.log(`  ${k.kind.padEnd(15)} ${String(k.count).padStart(6)}  ${pct(k.above_warn).padStart(6)} / ${pct(k.above_hold).padStart(6)}`)
 if (stress) {
   console.log(`\nДропперы стали осторожнее (${stress.droppers} дропперов, пороги прежние)`)
-  for (const [name, r] of [['объяснимый бустинг', stress.model], ['логистическая регр.', stress.baseline], ['потолок (идеал)', stress.ceiling]] as const) {
+  for (const [name, r] of [['объяснимый бустинг', stress.model], ['потолок (идеал)', stress.ceiling]] as const) {
     const [w, h] = r.account_level
     console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
   }

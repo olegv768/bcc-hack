@@ -10,9 +10,8 @@ const count = (value: number) => value.toLocaleString('ru-RU')
 // Доли переводим в «столько-то из 100» и «из 1000»: так число сразу понятно без слова «процент».
 const per = (share: number, base: number) => Math.round(share * base)
 
-const baseline = (name: string) => metrics.baseline.account_level.find((m) => m.threshold === name)!
 const ceiling = (name: string) => metrics.ceiling.account_level.find((m) => m.threshold === name)!
-const stress = (model: 'model' | 'baseline' | 'ceiling') => metrics.stress[model].account_level.find((m) => m.threshold === 'warn')!
+const stress = (model: 'model' | 'ceiling') => metrics.stress[model].account_level.find((m) => m.threshold === 'warn')!
 
 const transfers = metrics.transfer_level
 const missed = (t: typeof transfers.with_call_signal) => 1 - t.fraud.hold - t.fraud.warn
@@ -75,10 +74,10 @@ export function Metrics() {
       <BusinessCase />
 
       <div>
-        <h3 className="text-[19px] font-semibold">Одна оценка счёта: новая модель против прежней</h3>
+        <h3 className="text-[19px] font-semibold">Одна оценка счёта: модель против потолка</h3>
         <p className="mt-1 mb-4 max-w-[72ch] text-[15px] text-ink-2">
-          Здесь сведения о переводе не учитываются — только четыре признака счёта получателя. Сколько счетов мошенников из 100 замечает каждая
-          модель при одинаковой доле ложных срабатываний: {per(warn.honest_flagged, 1000)} честных счетов из 1000 на пороге «предупредить» и{' '}
+          Здесь сведения о переводе не учитываются — только четыре признака счёта получателя. Сколько счетов мошенников из 100 замечает модель
+          при доле ложных срабатываний {per(warn.honest_flagged, 1000)} честных счетов из 1000 на пороге «предупредить» и{' '}
           {per(hold.honest_flagged, 1000)} на пороге «придержать».
           Потолок — результат идеальной модели, которая знает, как устроены наши синтетические данные: выше него по этим четырём признакам
           подняться нельзя.
@@ -88,22 +87,20 @@ export function Metrics() {
           <thead className="border-b border-ink text-[14px] text-ink-2">
             <tr>
               <th className={cell + ' font-medium'}>Условия</th>
-              <th className={number + ' font-medium'}>Прежняя</th>
-              <th className={number + ' font-medium'}>Новая</th>
+              <th className={number + ' font-medium'}>Модель</th>
               <th className={number + ' font-medium'}>Потолок</th>
             </tr>
           </thead>
           <tbody>
             {(
               [
-                ['Замечает (порог «предупредить»)', baseline('warn').droppers_found, warn.droppers_found, ceiling('warn').droppers_found],
-                ['Придерживает перевод (порог «придержать»)', baseline('hold').droppers_found, hold.droppers_found, ceiling('hold').droppers_found],
-                ['Мошенники сменили тактику: чаще купленные и «тихие» счета', stress('baseline').droppers_found, stress('model').droppers_found, stress('ceiling').droppers_found],
+                ['Замечает (порог «предупредить»)', warn.droppers_found, ceiling('warn').droppers_found],
+                ['Придерживает перевод (порог «придержать»)', hold.droppers_found, ceiling('hold').droppers_found],
+                ['Мошенники сменили тактику: чаще купленные и «тихие» счета', stress('model').droppers_found, stress('ceiling').droppers_found],
               ] as const
-            ).map(([label, before, after, top]) => (
+            ).map(([label, after, top]) => (
               <tr key={label} className="border-b border-line">
                 <td className={cell}>{label}</td>
-                <td className={number}>{per(before, 100)}</td>
                 <td className={number + ' font-semibold'}>{per(after, 100)}</td>
                 <td className={number + ' text-muted'}>{per(top, 100)}</td>
               </tr>
@@ -111,7 +108,7 @@ export function Metrics() {
           </tbody>
         </table>
         <p className="mt-3 text-[14px] text-muted">
-          В повторных проверках результат новой модели на пороге «предупредить» менялся от {per(warn.droppers_found_interval[0]!, 100)} до{' '}
+          В повторных проверках результат модели на пороге «предупредить» менялся от {per(warn.droppers_found_interval[0]!, 100)} до{' '}
           {per(warn.droppers_found_interval[1]!, 100)} из 100.
         </p>
       </div>

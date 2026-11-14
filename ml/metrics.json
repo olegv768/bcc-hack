@@ -47,26 +47,6 @@
       ]
     }
   ],
-  "baseline": {
-    "name": "Логистическая регрессия",
-    "auc": 0.9787517077967626,
-    "account_level": [
-      {
-        "threshold": "warn",
-        "value": 0.8045,
-        "droppers_found": 0.8130381303813038,
-        "honest_flagged": 0.021639829535305077,
-        "precision": 0.436240404473147
-      },
-      {
-        "threshold": "hold",
-        "value": 0.9477,
-        "droppers_found": 0.6875768757687577,
-        "honest_flagged": 0.003240870696914793,
-        "precision": 0.8137638541833744
-      }
-    ]
-  },
   "ceiling": {
     "name": "Идеальная модель",
     "auc": 0.9940951750855197,
@@ -176,25 +156,6 @@
           "droppers_found": 0.6555023923444976,
           "honest_flagged": 0.003549177816361965,
           "precision": 0.7918328750544238
-        }
-      ]
-    },
-    "baseline": {
-      "auc": 0.9600278292387453,
-      "account_level": [
-        {
-          "threshold": "warn",
-          "value": 0.8045,
-          "droppers_found": 0.6411483253588517,
-          "honest_flagged": 0.021295066898171792,
-          "precision": 0.3827501439696662
-        },
-        {
-          "threshold": "hold",
-          "value": 0.9477,
-          "droppers_found": 0.4449760765550239,
-          "honest_flagged": 0.0027321009089980594,
-          "precision": 0.7703472101999475
         }
       ]
     },
