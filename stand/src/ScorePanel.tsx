@@ -90,10 +90,8 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
   if (!request || !response) {
     return (
       <div className="rounded-[20px] border border-dashed border-line p-6">
-        <p className="text-[19px] font-semibold">Ответа пока нет</p>
-        <p className="mt-2 max-w-[52ch] text-ink-2">
-          Нажмите «Перевести» в заглушке. Здесь появится то, что сервис вернул банку: риск получателя, причины и рекомендация.
-        </p>
+        <p className="text-[19px] font-semibold">Здесь появится решение</p>
+        <p className="mt-2 max-w-[52ch] text-ink-2">Нажмите «Перевести» — сервис ответит: пропустить, предупредить или придержать, и объяснит почему.</p>
       </div>
     )
   }

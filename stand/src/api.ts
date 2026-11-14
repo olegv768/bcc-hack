@@ -58,11 +58,12 @@ export async function loadAlerts(): Promise<Alert[]> {
   return (await readJson(await fetch('/api/alerts').catch(() => null))).items
 }
 
-export async function updateAlert(id: string, status: Alert['status'], resolution?: 'fraud' | 'legit'): Promise<Alert> {
-  const response = await fetch('/api/alerts/' + encodeURIComponent(id), {
+// Вместе с изменением шлём копию алерта: если сервис перезапустился и забыл очередь, он восстановит алерт по ней.
+export async function updateAlert(alert: Alert, status: Alert['status'], resolution?: 'fraud' | 'legit'): Promise<Alert> {
+  const response = await fetch('/api/alerts/' + encodeURIComponent(alert.alert_id), {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ status, resolution }),
+    body: JSON.stringify({ status, resolution, snapshot: alert }),
   }).catch(() => null)
   return readJson(response)
 }

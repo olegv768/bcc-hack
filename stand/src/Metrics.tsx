@@ -28,7 +28,7 @@ export function Metrics() {
   const honestSeen = per(bothered(all), 1000)
 
   const cell = 'py-2.5 pr-4'
-  const number = 'tabular py-2.5 pl-4 text-right'
+  const number = 'tabular py-2.5 pl-4 text-right whitespace-nowrap'
 
   return (
     <div className="space-y-14">
@@ -74,12 +74,13 @@ export function Metrics() {
           Потолок — результат идеальной модели, которая знает, как устроены наши синтетические данные: выше него по этим четырём признакам
           подняться нельзя.
         </p>
-        <table className="w-full max-w-[720px] text-left text-[15px]">
+        <table className="w-full max-w-[760px] text-left text-[15px]">
+          <caption className="mb-2 text-left text-[14px] text-ink-2">Счетов мошенников из 100</caption>
           <thead className="border-b border-ink text-[14px] text-ink-2">
             <tr>
               <th className={cell + ' font-medium'}>Условия</th>
-              <th className={number + ' font-medium'}>Прежняя модель</th>
-              <th className={number + ' font-medium'}>Новая модель</th>
+              <th className={number + ' font-medium'}>Прежняя</th>
+              <th className={number + ' font-medium'}>Новая</th>
               <th className={number + ' font-medium'}>Потолок</th>
             </tr>
           </thead>
@@ -93,9 +94,9 @@ export function Metrics() {
             ).map(([label, before, after, top]) => (
               <tr key={label} className="border-b border-line">
                 <td className={cell}>{label}</td>
-                <td className={number}>{per(before, 100)} из 100</td>
-                <td className={number + ' font-semibold'}>{per(after, 100)} из 100</td>
-                <td className={number + ' text-muted'}>{per(top, 100)} из 100</td>
+                <td className={number}>{per(before, 100)}</td>
+                <td className={number + ' font-semibold'}>{per(after, 100)}</td>
+                <td className={number + ' text-muted'}>{per(top, 100)}</td>
               </tr>
             ))}
           </tbody>
@@ -126,11 +127,11 @@ export function Metrics() {
           <h3 className="text-[19px] font-semibold">На каких счетах срабатывает оценка</h3>
           <p className="mt-1 mb-4 text-[15px] text-ink-2">Доля счетов каждого типа, которые одна оценка счёта поднимает выше порогов.</p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[460px] text-left text-[15px]">
+            <table className="w-full text-left text-[15px]">
               <thead className="border-b border-ink text-[14px] text-ink-2">
                 <tr>
                   <th className={cell + ' font-medium'}>Тип счёта</th>
-                  <th className={number + ' font-medium'}>Счетов</th>
+                  <th className={number + ' hidden font-medium sm:table-cell'}>Счетов</th>
                   <th className={number + ' font-medium'}>Среагировал</th>
                   <th className={number + ' font-medium'}>Придержал</th>
                 </tr>
@@ -148,7 +149,7 @@ export function Metrics() {
                     .map((k) => (
                       <tr key={k.kind} className="border-b border-line">
                         <td className={cell}>{KIND_LABELS[k.kind]}</td>
-                        <td className={number + ' text-muted'}>{count(k.count)}</td>
+                        <td className={number + ' hidden text-muted sm:table-cell'}>{count(k.count)}</td>
                         <td className={number}>{percent(k.above_warn, 0)}</td>
                         <td className={number}>{percent(k.above_hold, 0)}</td>
                       </tr>
@@ -169,8 +170,14 @@ export function Metrics() {
             <thead className="border-b border-ink text-[14px] text-ink-2">
               <tr>
                 <th className={cell + ' font-medium'}>Что известно сервису</th>
-                <th className={number + ' font-medium'}>Пропущено</th>
-                <th className={number + ' font-medium'}>Зря</th>
+                <th className={number + ' font-medium'}>
+                  Пропущено
+                  <span className="block font-normal">из 100</span>
+                </th>
+                <th className={number + ' font-medium'}>
+                  Зря
+                  <span className="block font-normal">из 1000</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -183,8 +190,8 @@ export function Metrics() {
               ).map(([label, t, main]) => (
                 <tr key={label} className={'border-b border-line ' + (main ? 'font-semibold' : '')}>
                   <td className={cell}>{label}</td>
-                  <td className={number}>{per(missed(t), 100)} из 100</td>
-                  <td className={number}>{per(bothered(t), 1000)} из 1000</td>
+                  <td className={number}>{per(missed(t), 100)}</td>
+                  <td className={number}>{per(bothered(t), 1000)}</td>
                 </tr>
               ))}
             </tbody>

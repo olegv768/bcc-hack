@@ -25,8 +25,14 @@ export type Alert = {
   action: 'warn' | 'hold'
   risk: number
   triggers: { code: string; text: string }[]
+  // что сообщил телефон клиента в момент перевода; null — сигнал не передан
+  signals: AlertSignals
   model_version: string
 }
+
+export type AlertSignals = { on_call: boolean | null; remote_access: boolean | null; first_transfer: boolean | null }
+
+export const NO_SIGNALS: AlertSignals = { on_call: null, remote_access: null, first_transfer: null }
 
 const MAX_ALERTS = 2000
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -75,6 +81,13 @@ export function createAlertQueue(file: string) {
       alert.updated_at = new Date().toISOString()
       save()
       return alert
+    },
+
+    // Возвращает в очередь алерт, который сервис потерял при перезапуске (только для стенда).
+    restore(alert: Alert) {
+      if (alerts.some((a) => a.alert_id === alert.alert_id)) return
+      alerts = [alert, ...alerts].slice(0, MAX_ALERTS)
+      save()
     },
 
     // Повторный запрос по тому же переводу не должен плодить алерты.

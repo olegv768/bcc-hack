@@ -3,7 +3,7 @@
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { createAlertQueue, type Alert } from './alerts.ts'
+import { createAlertQueue, NO_SIGNALS, type Alert } from './alerts.ts'
 import { FEATURE_KEYS } from './features.ts'
 import { decide, riskLevel, type Model } from './model.ts'
 import { createStore, toCsv } from './store.ts'
@@ -46,9 +46,32 @@ const AlertsQuery = z.object({
   since: z.iso.datetime().optional(),
 })
 
+// Копия алерта, которую стенд присылает вместе с изменением. На хостинге экземпляр сервиса может
+// перезапуститься и забыть очередь; по копии он восстанавливает алерт вместо ответа «не найден».
+const AlertSnapshot = z.object({
+  alert_id: z.string().min(1).max(40),
+  created_at: z.iso.datetime(),
+  updated_at: z.iso.datetime(),
+  priority: z.enum(['high', 'medium']),
+  status: z.enum(['new', 'in_progress', 'closed']),
+  resolution: z.enum(['fraud', 'legit']).nullable(),
+  transfer_id: z.string().max(100).nullable(),
+  client_ref: z.string().max(100).nullable(),
+  account_id: z.string().min(1).max(100),
+  amount: z.number().positive().max(1e12),
+  action: z.enum(['warn', 'hold']),
+  risk: z.number().min(0).max(1),
+  triggers: z.array(z.object({ code: z.string().max(40), text: z.string().max(300) })).max(12),
+  signals: z
+    .object({ on_call: z.boolean().nullable(), remote_access: z.boolean().nullable(), first_transfer: z.boolean().nullable() })
+    .default(NO_SIGNALS),
+  model_version: z.string().max(60),
+})
+
 const AlertPatch = z.object({
   status: z.enum(['new', 'in_progress', 'closed']),
   resolution: z.enum(['fraud', 'legit']).optional(),
+  snapshot: AlertSnapshot.optional(),
 })
 
 export function createApp(options: {
@@ -118,6 +141,11 @@ export function createApp(options: {
         action: result.action,
         risk: result.risk,
         triggers: reasons.map((r) => ({ code: r.code, text: r.text })),
+        signals: {
+          on_call: context.sender_on_call,
+          remote_access: context.remote_access_active,
+          first_transfer: context.first_transfer_to_recipient,
+        },
         model_version: model.version,
       })
       alertId = alert.alert_id
@@ -187,6 +215,8 @@ export function createApp(options: {
       res.status(400).json({ error: 'invalid_request', message: z.prettifyError(patch.error) })
       return
     }
+    // только для стенда: вернуть в очередь алерт, потерянный при перезапуске сервиса
+    if (options.demo && patch.data.snapshot?.alert_id === req.params.id) alerts.restore(patch.data.snapshot)
     const alert = alerts.update(req.params.id, patch.data)
     if (!alert) {
       res.status(404).json({ error: 'not_found', message: 'Алерт не найден' })

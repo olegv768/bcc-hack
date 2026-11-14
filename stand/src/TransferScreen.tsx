@@ -20,8 +20,9 @@ const AVATAR = [
   'bg-[#ffe1e1] text-[#8f1216]',
 ]
 
-// Условная заглушка экрана перевода. Вместо неё в банке — его собственное приложение.
-export function TransferStub(props: { onScored: (request: ScoreRequest, response: ScoreResponse) => void }) {
+// Демонстрационный экран перевода: каждое нажатие отправляет настоящий запрос в сервис оценки.
+// В банке вместо него — его собственное приложение с тем же клиентским модулем.
+export function TransferScreen(props: { onScored: (request: ScoreRequest, response: ScoreResponse) => void }) {
   const phone = useRef<HTMLDivElement>(null)
   const [scenarioId, setScenarioId] = useState('fresh')
   const [amount, setAmount] = useState(450000)

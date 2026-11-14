@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { Alert } from '../../service/src/alerts.ts'
+import type { Alert, AlertSignals } from '../../service/src/alerts.ts'
 import { updateAlert } from './api.ts'
 import { ActionBadge } from './ScorePanel.tsx'
 import { clientContacts, money } from './scenarios.ts'
@@ -9,8 +9,8 @@ const RESOLUTION_LABEL = { fraud: 'мошенничество подтвержд
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 
-// Заглушка рабочей панели дежурного сотрудника фрод-мониторинга, нарисованная как окно программы.
-// В банке вместо неё — его система ведения инцидентов: она получает те же алерты через GET /alerts или по вебхуку.
+// Рабочая панель дежурного сотрудника фрод-мониторинга: настоящие алерты из очереди сервиса (GET /alerts).
+// В банке их показывает его система ведения инцидентов — она получает те же алерты по вебхуку или опросом.
 export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChanged: () => void }) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -27,10 +27,11 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
     setBusy(true)
     setActionError('')
     try {
-      await updateAlert(selected.alert_id, status, resolution)
+      await updateAlert(selected, status, resolution)
       props.onChanged()
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Не удалось изменить алерт')
+      setActionError(e instanceof Error ? e.message : 'Не удалось сохранить изменение. Попробуйте ещё раз.')
+      props.onChanged()
     }
     setBusy(false)
   }
@@ -66,7 +67,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
         </div>
       ) : (
         <div className="grid md:grid-cols-[minmax(0,270px)_1fr]">
-          <ul className="max-h-[230px] overflow-auto border-b border-line p-2 md:max-h-[520px] md:border-r md:border-b-0" aria-label="Очередь алертов">
+          <ul className="max-h-[230px] overflow-auto border-b border-line p-2 md:max-h-[520px] md:border-b-0" aria-label="Очередь алертов">
             {alerts.map((alert) => (
               <li key={alert.alert_id}>
                 <button
@@ -93,7 +94,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
             ))}
           </ul>
 
-          <article className="p-6 sm:p-8" aria-live="polite">
+          <article className="border-line p-6 sm:p-8 md:border-l" aria-live="polite">
             <div className="flex flex-wrap items-center gap-2 text-[13px] font-semibold">
               <span className={'rounded-full px-3 py-1 ' + (selected.priority === 'high' ? 'bg-hold text-white' : 'bg-warn-bg text-warn-ink')}>
                 {selected.priority === 'high' ? 'Высокий приоритет' : 'Средний приоритет'}
@@ -115,6 +116,8 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                 <b className="tabular">{selected.risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
               </div>
             </div>
+
+            <PhoneSignals signals={selected.signals ?? NO_SIGNALS} />
 
             <div className="mt-7 grid gap-x-12 gap-y-7 lg:grid-cols-[1.6fr_1fr]">
               <div>
@@ -176,6 +179,36 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
           </article>
         </div>
       )}
+    </div>
+  )
+}
+
+// у алертов, созданных до появления сигналов, их нет
+const NO_SIGNALS: AlertSignals = { on_call: null, remote_access: null, first_transfer: null }
+
+// Что сообщил телефон клиента в момент перевода. Сработавший сигнал выделен красным.
+function PhoneSignals(props: { signals: AlertSignals }) {
+  const rows: [string, boolean | null, string, string][] = [
+    ['Звонок', props.signals.on_call, 'Клиент разговаривал по телефону', 'Не разговаривал'],
+    ['Удалённый доступ', props.signals.remote_access, 'Телефоном могли управлять', 'Не обнаружен'],
+    ['Получатель', props.signals.first_transfer, 'Переводит ему впервые', 'Уже переводил раньше'],
+  ]
+  return (
+    <div className="mt-7">
+      <h4 className="mb-2.5 text-[14px] text-muted">Телефон клиента во время перевода</h4>
+      <ul className="grid gap-2 sm:grid-cols-3">
+        {rows.map(([label, value, yes, no]) => (
+          <li
+            key={label}
+            className={'rounded-[14px] px-4 py-3 ' + (value === true ? 'bg-hold-bg text-hold-ink' : 'bg-field text-ink')}
+          >
+            <span className={'block text-[13px] ' + (value === true ? '' : 'text-muted')}>{label}</span>
+            <span className="block text-[15px] leading-snug font-semibold">
+              {value === null ? 'Не передано' : value ? yes : no}
+            </span>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

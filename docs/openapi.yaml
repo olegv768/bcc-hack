@@ -480,6 +480,22 @@ components:
                 type: string
               text:
                 type: string
+        signals:
+          type: object
+          description: Что сообщил телефон клиента в момент перевода. null — сигнал не передан.
+          properties:
+            on_call:
+              type: boolean
+              nullable: true
+              description: Клиент разговаривал по телефону.
+            remote_access:
+              type: boolean
+              nullable: true
+              description: На телефоне был включён удалённый доступ к экрану.
+            first_transfer:
+              type: boolean
+              nullable: true
+              description: Клиент переводил этому получателю впервые.
         model_version:
           type: string
     FlaggedAccount:

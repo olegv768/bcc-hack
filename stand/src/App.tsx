@@ -7,7 +7,7 @@ import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
 import { ACTION_LABELS, money } from './scenarios.ts'
 import { ScorePanel } from './ScorePanel.tsx'
-import { TransferStub } from './TransferStub.tsx'
+import { TransferScreen } from './TransferScreen.tsx'
 
 const CONTAINER = 'mx-auto max-w-[1180px] px-4 sm:px-6'
 
@@ -44,7 +44,7 @@ export function App() {
             Перевод мошеннику останавливается здесь
           </h1>
           <p className="mt-4 max-w-[60ch] text-[17px] text-white/75">
-            Перед отправкой денег банк спрашивает сервис о счёте получателя. Сделайте перевод в заглушке ниже и проследите его путь.
+            Перед отправкой денег банк спрашивает сервис о счёте получателя. Сделайте перевод ниже и посмотрите, что решит сервис.
           </p>
           <Rail request={request} response={response} alerts={alerts} />
         </div>
@@ -52,8 +52,8 @@ export function App() {
 
       <main>
         <div className={CONTAINER + ' grid gap-x-14 gap-y-12 pt-12 pb-20 lg:grid-cols-[372px_1fr]'}>
-          <Step number={1} sticky title="Приложение банка" note="Условная заглушка экрана перевода с клиентским модулем.">
-            <TransferStub
+          <Step number={1} sticky title="Приложение банка" note="Выберите получателя и нажмите «Перевести» — запрос уйдёт в сервис оценки.">
+            <TransferScreen
               onScored={(req, res) => {
                 setRequest(req)
                 setResponse(res)
@@ -62,7 +62,7 @@ export function App() {
             />
           </Step>
 
-          <Step number={2} title="Сервис оценки получателя" note="Считает локально, внешних сервисов не вызывает.">
+          <Step number={2} title="Сервис оценки получателя" note="Решение и причины. Всё считается внутри банка, данные никуда не уходят.">
             <ScorePanel request={request} response={response} />
           </Step>
         </div>
@@ -73,7 +73,7 @@ export function App() {
             <Step
               number={3}
               title="Панель дежурного фрод-мониторинга"
-              note="Условная заглушка системы ведения инцидентов банка. Алерт попадает в очередь аналитика в тот же момент, когда сервис отвечает на перевод."
+              note="Так подозрительный перевод видит дежурный сотрудник. Алерт приходит в ту же секунду, что и ответ сервиса."
             >
               <DutyPanel alerts={alerts} error={alertsError} onChanged={refreshFlagged} />
             </Step>
@@ -81,7 +81,7 @@ export function App() {
         </div>
 
         <div className={CONTAINER + ' py-16'}>
-          <Step number={4} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
+          <Step number={4} title="Выгрузка для аналитика" note="Все помеченные счета с причинами — файлом для Excel или по API.">
             <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
           </Step>
         </div>

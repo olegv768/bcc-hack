@@ -205,6 +205,7 @@ describe('очередь алертов для аналитика', () => {
     const alert = queue.items.find((a: { alert_id: string }) => a.alert_id === scored.alert_id)
     expect(alert).toMatchObject({ priority: 'high', status: 'new', action: 'hold', amount: 400000, client_ref: 'cl_777', transfer_id: 'tr_1', account_id: 'tok_case' })
     expect(alert.triggers.map((t: { code: string }) => t.code)).toEqual(expect.arrayContaining(['NEW_ACCOUNT', 'ON_CALL']))
+    expect(alert.signals).toEqual({ on_call: true, remote_access: null, first_transfer: true })
     expect(alert.triggers[0].text).toMatch(/[а-я]/i)
   })
 
@@ -223,6 +224,34 @@ describe('очередь алертов для аналитика', () => {
     expect(closed).toMatchObject({ status: 'closed', resolution: 'fraud' })
     expect((await patch({ status: 'done' })).status).toBe(400)
     expect((await fetch(url + '/alerts/al_missing', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: '{"status":"closed"}' })).status).toBe(404)
+  })
+
+  test('стенд восстанавливает алерт, который сервис потерял при перезапуске', async () => {
+    const { alert_id } = await (await score({ recipient: { ...dropper, account_id: 'tok_lost' }, context: pressured })).json()
+    const queue = await (await fetch(url + '/alerts')).json()
+    const snapshot = queue.items.find((a: { alert_id: string }) => a.alert_id === alert_id)
+
+    // «перезапуск»: очередь пуста, стенд всё ещё показывает старую карточку
+    await fetch(url + '/flagged', { method: 'DELETE' })
+    const send = (base: string, body: unknown) =>
+      fetch(`${base}/alerts/${alert_id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
+
+    expect((await send(url, { status: 'in_progress' })).status).toBe(404)
+    const restored = await send(url, { status: 'closed', resolution: 'fraud', snapshot })
+    expect(restored.status).toBe(200)
+    expect(await restored.json()).toMatchObject({ alert_id, status: 'closed', resolution: 'fraud', account_id: 'tok_lost' })
+
+    // память о счёте после восстановления работает
+    const next = await (await score({ recipient: { ...friend, account_id: 'tok_lost' }, context: calm })).json()
+    expect(next.reasons[0].code).toBe('CONFIRMED_FRAUD')
+
+    // вне стенда копия не принимается
+    const file = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.json')
+    const server = createApp({ model, dataFile: file, openapi: '', demo: false }).listen(0, '127.0.0.1')
+    await new Promise((resolve) => server.once('listening', resolve))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    expect((await send(base, { status: 'closed', snapshot })).status).toBe(404)
+    server.close()
   })
 
   test('новый алерт сразу уходит в систему банка, если задан её адрес', async () => {
