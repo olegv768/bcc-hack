@@ -58,11 +58,11 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
 
           <path d={path ?? ''} fill="none" stroke="#2a78d6" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
 
-          {props.marks.map((mark) => (
+          {props.marks.map((mark, i) => (
             <g key={mark.label}>
               <circle cx={x(mark.honest_flagged)} cy={y(mark.droppers_found)} r={5} fill="#2a78d6" stroke="#ffffff" strokeWidth={2} />
-              <text x={x(mark.honest_flagged) + 10} y={y(mark.droppers_found) + 18} fontSize={12} fill="#0e1b3d">
-                {mark.label}: {Math.round(mark.droppers_found * 100)} из 100 мошенников, {Math.round(mark.honest_flagged * 1000)} из 1000 честных
+              <text x={x(mark.honest_flagged) + 10} y={y(mark.droppers_found) + (i === 0 ? 24 : -14)} fontSize={13} fill="#0e1b3d">
+                {mark.label}
               </text>
             </g>
           ))}
@@ -89,6 +89,14 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
           <div className="text-white/65">порог оценки {hover.threshold.toLocaleString('ru-RU')}</div>
         </div>
       )}
+      <ul className="mt-3 space-y-1 text-[15px]">
+        {props.marks.map((mark) => (
+          <li key={mark.label}>
+            <b>{mark.label}:</b> {Math.round(mark.droppers_found * 100)} из 100 мошенников замечено, {Math.round(mark.honest_flagged * 1000)} из 1000
+            честных побеспокоено зря
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }

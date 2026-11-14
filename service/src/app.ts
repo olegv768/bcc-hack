@@ -28,7 +28,7 @@ const ScoreRequest = z.object({
     amount: z.number().positive().max(1e12),
     sender_on_call: z.boolean().nullable().default(null),
     remote_access_active: z.boolean().nullable().default(null),
-    first_transfer_to_recipient: z.boolean().default(false),
+    first_transfer_to_recipient: z.boolean().nullable().default(null),
     amount_to_typical_ratio: z.number().min(0).max(1e6).nullable().default(null),
   }),
 })

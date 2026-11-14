@@ -9,6 +9,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
 import { decide, scoreRecipient, type Model } from '../service/src/model.ts'
+import { idealScore } from './ceiling.ts'
 import { readCsv, writeCsv } from './data.ts'
 import { fitEbm } from './ebm.ts'
 import { CAREFUL_DROPPER_MIX, DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccounts, generateContext, type Account } from './generate.ts'
@@ -64,8 +65,7 @@ const fit = fitEbm(train.map((a) => FEATURE_KEYS.map((key) => a.features[key])),
 const model: Model = {
   version: `ebm-${dataFile ? 'bank' : 'synthetic'}-${SEED}`,
   bias: fit.bias,
-  features: Object.fromEntries(FEATURE_KEYS.map((key, j) => [key, fit.curves[j]!])) as Model['features'],
-  pairs: fit.pairs.map((p) => ({ ...p, a: FEATURE_KEYS[p.a]!, b: FEATURE_KEYS[p.b]! })),
+  terms: fit.terms.map((term) => ({ ...term, features: term.features.map((j) => FEATURE_KEYS[j]!) })),
   thresholds: { soft: 0, warn: 0, hold: 0 },
 }
 const logistic = fitLogistic(train, labels, weights)
@@ -138,6 +138,8 @@ model.thresholds = thresholdsFor(ebmScore)
 const logisticThresholds = thresholdsFor(logisticScore)
 
 const result = evaluate(ebmScore, model.thresholds, test, true)
+// потолок: модель, которая знает формулы генератора (есть только для синтетики)
+const ceiling = dataFile ? null : evaluate(idealScore, thresholdsFor(idealScore), test)
 const baseline = evaluate(logisticScore, logisticThresholds, test)
 
 const scored = test.map((a) => ({ ...a, risk: ebmScore(a.features) }))
@@ -168,7 +170,7 @@ const stress = shifted && {
 
 // --- переводы: что делает сервис целиком (модель + обстоятельства перевода; только для синтетики) ---
 
-function transferLevel(withCallSignal: boolean) {
+function transferLevel(withCallSignal: boolean, withKnownRecipient = true) {
   const transferRng = createRng(SEED + 1)
   const counts = { fraud: { allow: 0, warn: 0, hold: 0, total: 0 }, honest: { allow: 0, warn: 0, hold: 0, total: 0 } }
   for (const account of test) {
@@ -177,6 +179,8 @@ function transferLevel(withCallSignal: boolean) {
     for (let i = 0; i < (account.is_dropper ? 20 : 1); i++) {
       const context = generateContext(account.is_dropper, transferRng)
       if (!withCallSignal) context.sender_on_call = null
+      // банк не сообщает, что клиент уже переводил получателю: правило смягчения не действует
+      if (!withKnownRecipient && context.first_transfer_to_recipient === false) context.first_transfer_to_recipient = null
       group[decide(model, account.features, context).action]++
       group.total++
     }
@@ -200,11 +204,18 @@ const metrics = {
   thresholds: model.thresholds,
   account_level: result.account_level,
   baseline: { name: 'Логистическая регрессия', auc: baseline.auc, account_level: baseline.account_level },
+  ceiling: ceiling && { name: 'Идеальная модель', auc: ceiling.auc, account_level: ceiling.account_level },
   by_kind: byKind,
   stress,
   transfer_level: dataFile
     ? null
-    : { assumptions: TRANSFER_ASSUMPTIONS, with_call_signal: transferLevel(true), without_call_signal: transferLevel(false) },
+    : {
+        assumptions: TRANSFER_ASSUMPTIONS,
+        with_call_signal: transferLevel(true),
+        without_call_signal: transferLevel(false),
+        // то же, что with_call_signal, но без правила «клиент уже переводил этому получателю»
+        without_known_recipient_rule: transferLevel(true, false),
+      },
   roc,
 }
 
@@ -219,7 +230,7 @@ console.log(`Данные: ${dataFile ?? 'синтетические'}, счет
 console.log(`Пороги новой модели:`, model.thresholds)
 console.log(`\nОтложенная выборка: ${droppers.length} дропперов, ${honest.length} честных`)
 console.log(`                         AUC    warn: найдено / ложных    hold: найдено / ложных`)
-for (const [name, r] of [['объяснимый бустинг', result], ['логистическая регр.', baseline]] as const) {
+for (const [name, r] of [['объяснимый бустинг', result], ['логистическая регр.', baseline], ...(ceiling ? [['потолок (идеал)', ceiling] as const] : [])] as const) {
   const [w, h] = r.account_level
   console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
 }
@@ -237,7 +248,11 @@ if (stress) {
   }
 }
 if (metrics.transfer_level) {
-  for (const [title, t] of [['с сигналом звонка', metrics.transfer_level.with_call_signal], ['без сигнала звонка', metrics.transfer_level.without_call_signal]] as const) {
+  for (const [title, t] of [
+    ['все сигналы', metrics.transfer_level.with_call_signal],
+    ['без сигнала звонка', metrics.transfer_level.without_call_signal],
+    ['без правила «уже переводил получателю»', metrics.transfer_level.without_known_recipient_rule],
+  ] as const) {
     console.log(`\nПереводы, ${title}`)
     console.log(`  мошеннические: придержано ${pct(t.fraud.hold)}, предупреждение ${pct(t.fraud.warn)}, пропущено ${pct(1 - t.fraud.hold - t.fraud.warn)}`)
     console.log(`  честные:       придержано ${pct(t.honest.hold)}, предупреждение ${pct(t.honest.warn)}`)

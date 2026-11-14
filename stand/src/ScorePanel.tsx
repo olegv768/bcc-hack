@@ -106,7 +106,7 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
 
   return (
     <div className="space-y-4">
-      <div className={'flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-[20px] p-7 ' + VERDICT_CLASS[response.action]}>
+      <div key={response.request_id} className={'verdict-in flex flex-wrap items-end justify-between gap-x-8 gap-y-4 rounded-[20px] p-7 ' + VERDICT_CLASS[response.action]}>
         <div>
           <div className="text-[14px] opacity-80">Рекомендация банку</div>
           <div className="font-display text-[34px] leading-tight font-semibold sm:text-[42px]">{ACTION_LABELS[response.action]}</div>

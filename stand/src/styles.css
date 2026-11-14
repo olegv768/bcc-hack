@@ -213,7 +213,22 @@ summary:focus-visible {
   transform: translateX(18px);
 }
 
+/* плашка вердикта появляется после каждого нового ответа сервиса */
+.verdict-in {
+  animation: verdict-in 0.35s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes verdict-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .verdict-in {
+    animation: none;
+  }
   .rail-pulse {
     animation: none !important;
   }

@@ -3,15 +3,20 @@
 import { readFileSync } from 'node:fs'
 import { FEATURE_KEYS, type FeatureKey, type RecipientFeatures, type TransferContext } from './features.ts'
 
-// Объяснимый бустинг (обучение — ml/ebm.ts). Оценка — сумма вкладов:
-//   features — «кривая» по каждому признаку: значения признака разбиты на интервалы, у каждого свой вклад;
-//   pairs — таблица по каждой паре признаков: поправка за их сочетание.
-// Вклад признака в причины = его кривая + половина каждой парной поправки с его участием.
+// Объяснимый бустинг (обучение — ml/ebm.ts). Оценка — сумма таблиц:
+// по одной на каждый признак (значения разбиты на интервалы, у каждого интервала свой вклад)
+// и по одной на каждое сочетание признаков — поправка за то, что они встретились вместе.
+// Вклад признака в причины = его таблица + равная доля каждой поправки с его участием.
+export type Term = {
+  features: FeatureKey[] // один признак или сочетание
+  edges: number[][] // границы интервалов по каждому признаку таблицы
+  scores: number[] // вклады клеток, развёрнутые в один список
+}
+
 export type Model = {
   version: string
   bias: number
-  features: Record<FeatureKey, { edges: number[]; scores: number[] }>
-  pairs: { a: FeatureKey; b: FeatureKey; edgesA: number[]; edgesB: number[]; scores: number[][] }[]
+  terms: Term[]
   // пороги оценки, подобранные на проверочной выборке по доле ложных срабатываний
   thresholds: { soft: number; warn: number; hold: number }
 }
@@ -77,19 +82,14 @@ export function scoreRecipient(model: Model, features: RecipientFeatures) {
   // непереданный признак ничего не добавляет: это равносильно «как у среднего счёта»
   const missing = FEATURE_KEYS.filter((key) => !known(key))
 
-  for (const key of FEATURE_KEYS) {
-    if (!known(key)) continue
-    const curve = model.features[key]
-    const score = curve.scores[binOf(curve.edges, features[key]!)]!
-    contributions[key] += score
-    logit += score
-  }
-
-  for (const pair of model.pairs) {
-    if (!known(pair.a) || !known(pair.b)) continue
-    const score = pair.scores[binOf(pair.edgesA, features[pair.a]!)]![binOf(pair.edgesB, features[pair.b]!)]!
-    contributions[pair.a] += score / 2
-    contributions[pair.b] += score / 2
+  for (const term of model.terms) {
+    if (!term.features.every(known)) continue
+    let cell = 0
+    term.features.forEach((key, f) => {
+      cell = cell * (term.edges[f]!.length + 1) + binOf(term.edges[f]!, features[key]!)
+    })
+    const score = term.scores[cell]!
+    for (const key of term.features) contributions[key] += score / term.features.length
     logit += score
   }
 
@@ -103,7 +103,8 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   // Типичная картина обмана: клиента ведут по телефону или управляют его телефоном удалённо,
   // и деньги уходят на счёт, куда он раньше не переводил.
   const remoteAccess = context.remote_access_active === true
-  const underPressure = (context.sender_on_call === true || remoteAccess) && context.first_transfer_to_recipient
+  const newRecipient = context.first_transfer_to_recipient === true
+  const underPressure = (context.sender_on_call === true || remoteAccess) && newRecipient
   const unusualAmount = (context.amount_to_typical_ratio ?? 0) >= UNUSUAL_AMOUNT_RATIO
   const repeatTarget = !history.confirmedLegit && history.otherClients24h >= REPEAT_TARGET_CLIENTS
 
@@ -115,6 +116,11 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   if (accountRisk >= hold) action = 'hold'
   else if (accountRisk >= warn) action = underPressure ? 'hold' : 'warn'
   else if (underPressure && (accountRisk >= soft || unusualAmount || remoteAccess)) action = 'warn'
+
+  // Клиент уже переводил этому получателю, значит, счёт ему не продиктовали по телефону только что.
+  // Решение по признакам счёта смягчаем на ступень: так реже беспокоим людей, которые платят знакомым.
+  const knownRecipient = context.first_transfer_to_recipient === false && !remoteAccess
+  if (knownRecipient) action = action === 'hold' ? 'warn' : 'allow'
 
   // На счёт за сутки уже шли подозрительные переводы от нескольких клиентов — поднимаем решение на ступень.
   if (repeatTarget) action = action === 'allow' ? 'warn' : 'hold'
@@ -137,7 +143,7 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   if (action !== 'allow') {
     if (remoteAccess) reasons.push({ code: 'REMOTE_ACCESS', value: null, contribution: null })
     if (context.sender_on_call) reasons.push({ code: 'ON_CALL', value: null, contribution: null })
-    if (context.first_transfer_to_recipient) reasons.push({ code: 'FIRST_TRANSFER', value: null, contribution: null })
+    if (newRecipient) reasons.push({ code: 'FIRST_TRANSFER', value: null, contribution: null })
     if (unusualAmount) reasons.push({ code: 'UNUSUAL_AMOUNT', value: context.amount_to_typical_ratio, contribution: null })
   }
 

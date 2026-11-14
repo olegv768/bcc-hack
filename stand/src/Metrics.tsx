@@ -10,6 +10,7 @@ const count = (value: number) => value.toLocaleString('ru-RU')
 const per = (share: number, base: number) => Math.round(share * base)
 
 const baseline = (name: string) => metrics.baseline.account_level.find((m) => m.threshold === name)!
+const ceiling = (name: string) => metrics.ceiling.account_level.find((m) => m.threshold === name)!
 const stress = (model: 'model' | 'baseline') => metrics.stress[model].account_level.find((m) => m.threshold === 'warn')!
 
 const transfers = metrics.transfer_level
@@ -64,7 +65,9 @@ export function Metrics() {
       <div>
         <h3 className="text-[19px] font-semibold">Новая модель против прежней</h3>
         <p className="mt-1 mb-4 max-w-[72ch] text-[15px] text-ink-2">
-          Сколько счетов мошенников из 100 замечает каждая модель. Честных клиентов обе беспокоят одинаково часто — пороги подобраны под это.
+          Сколько счетов мошенников из 100 замечает каждая модель. Честных клиентов все беспокоят одинаково часто — пороги подобраны под это.
+          Потолок — результат идеальной модели, которая знает, как устроены наши синтетические данные: выше него по этим четырём признакам
+          подняться нельзя.
         </p>
         <table className="w-full max-w-[720px] text-left text-[15px]">
           <thead className="border-b border-ink text-[14px] text-ink-2">
@@ -72,19 +75,22 @@ export function Metrics() {
               <th className={cell + ' font-medium'}>Условия</th>
               <th className={number + ' font-medium'}>Прежняя модель</th>
               <th className={number + ' font-medium'}>Новая модель</th>
+              <th className={number + ' font-medium'}>Потолок</th>
             </tr>
           </thead>
           <tbody>
             {(
               [
-                ['Обычные условия', baseline('warn').droppers_found, warn.droppers_found],
-                ['Мошенники сменили тактику: чаще купленные и «тихие» счета', stress('baseline').droppers_found, stress('model').droppers_found],
+                ['Замечает (порог «предупредить»)', baseline('warn').droppers_found, warn.droppers_found, ceiling('warn').droppers_found],
+                ['Придерживает перевод (порог «придержать»)', baseline('hold').droppers_found, hold.droppers_found, ceiling('hold').droppers_found],
+                ['Мошенники сменили тактику: чаще купленные и «тихие» счета', stress('baseline').droppers_found, stress('model').droppers_found, null],
               ] as const
-            ).map(([label, before, after]) => (
+            ).map(([label, before, after, top]) => (
               <tr key={label} className="border-b border-line">
                 <td className={cell}>{label}</td>
                 <td className={number}>{per(before, 100)} из 100</td>
                 <td className={number + ' font-semibold'}>{per(after, 100)} из 100</td>
+                <td className={number + ' text-muted'}>{top === null ? 'не считали' : `${per(top, 100)} из 100`}</td>
               </tr>
             ))}
           </tbody>
@@ -145,28 +151,40 @@ export function Metrics() {
         </div>
 
         <div className="min-w-0">
-          <h3 className="text-[19px] font-semibold">Что даёт сигнал звонка</h3>
-          <p className="mt-1 mb-4 text-[15px] text-ink-2">Сколько мошеннических переводов из 100 проходят незамеченными.</p>
+          <h3 className="text-[19px] font-semibold">Что дают сведения о самом переводе</h3>
+          <p className="mt-1 mb-4 text-[15px] text-ink-2">
+            Сервис смотрит не только на счёт получателя. Слева — сколько мошеннических переводов из 100 проходит незамеченными, справа — сколько
+            честных переводов из 1000 мы беспокоим зря.
+          </p>
           <table className="w-full text-left text-[15px]">
+            <thead className="border-b border-ink text-[14px] text-ink-2">
+              <tr>
+                <th className={cell + ' font-medium'}>Что известно сервису</th>
+                <th className={number + ' font-medium'}>Пропущено</th>
+                <th className={number + ' font-medium'}>Зря</th>
+              </tr>
+            </thead>
             <tbody>
-              <tr className="border-y border-line">
-                <td className={cell}>Телефон не сообщает о звонке</td>
-                <td className={number}>{per(missed(transfers.without_call_signal), 100)} из 100</td>
-              </tr>
-              <tr className="border-b border-line">
-                <td className={cell}>Телефон сообщает о звонке</td>
-                <td className={number + ' font-semibold'}>{per(missed(transfers.with_call_signal), 100)} из 100</td>
-              </tr>
+              {(
+                [
+                  ['Всё: звонок и был ли перевод этому получателю раньше', transfers.with_call_signal, true],
+                  ['Телефон не сообщает о звонке', transfers.without_call_signal, false],
+                  ['Неизвестно, переводил ли клиент этому получателю раньше', transfers.without_known_recipient_rule, false],
+                ] as const
+              ).map(([label, t, main]) => (
+                <tr key={label} className={'border-b border-line ' + (main ? 'font-semibold' : '')}>
+                  <td className={cell}>{label}</td>
+                  <td className={number}>{per(missed(t), 100)} из 100</td>
+                  <td className={number}>{per(bothered(t), 1000)} из 1000</td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          <p className="mt-4 text-[15px] text-ink-2">
-            Честных клиентов при этом беспокоят почти одинаково: {per(bothered(transfers.without_call_signal), 1000)} и{' '}
-            {per(bothered(transfers.with_call_signal), 1000)} из 1000.
-          </p>
-          <p className="mt-3 text-[14px] text-muted">
-            Здесь заложено допущение, а не измерение: {per(transfers.assumptions.fraud.on_call, 100)} из 100 обманутых клиентов переводят во
-            время звонка, а среди честных переводов на звонке {per(transfers.assumptions.honest.on_call, 100)} из 100. Настоящие числа банк
-            узнает после подключения клиентского модуля.
+          <p className="mt-4 text-[14px] text-muted">
+            Здесь заложены допущения, а не измерения: {per(transfers.assumptions.fraud.on_call, 100)} из 100 обманутых клиентов переводят во
+            время звонка и {per(transfers.assumptions.fraud.first_transfer, 100)} из 100 — впервые этому получателю; среди честных переводов
+            на звонке {per(transfers.assumptions.honest.on_call, 100)} из 100, новому получателю —{' '}
+            {per(transfers.assumptions.honest.first_transfer, 100)} из 100. Настоящие числа банк узнает на своих данных.
           </p>
         </div>
       </div>

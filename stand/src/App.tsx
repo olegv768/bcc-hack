@@ -9,6 +9,8 @@ import { ACTION_LABELS, money } from './scenarios.ts'
 import { ScorePanel } from './ScorePanel.tsx'
 import { TransferStub } from './TransferStub.tsx'
 
+const CONTAINER = 'mx-auto max-w-[1180px] px-4 sm:px-6'
+
 export function App() {
   const [request, setRequest] = useState<ScoreRequest | null>(null)
   const [response, setResponse] = useState<ScoreResponse | null>(null)
@@ -48,8 +50,8 @@ export function App() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-[1180px] px-4 pt-10 pb-16 sm:px-6">
-        <div className="grid gap-x-12 gap-y-12 lg:grid-cols-[372px_1fr]">
+      <main>
+        <div className={CONTAINER + ' grid gap-x-14 gap-y-12 pt-12 pb-20 lg:grid-cols-[372px_1fr]'}>
           <Step number={1} sticky title="Приложение банка" note="Условная заглушка экрана перевода с клиентским модулем.">
             <TransferStub
               onScored={(req, res) => {
@@ -60,11 +62,14 @@ export function App() {
             />
           </Step>
 
-          <div className="min-w-0 space-y-14">
-            <Step number={2} title="Сервис оценки получателя" note="Считает локально, внешних сервисов не вызывает.">
-              <ScorePanel request={request} response={response} />
-            </Step>
+          <Step number={2} title="Сервис оценки получателя" note="Считает локально, внешних сервисов не вызывает.">
+            <ScorePanel request={request} response={response} />
+          </Step>
+        </div>
 
+        {/* сторона банка: то, что видит не клиент, а сотрудник */}
+        <div className="bg-field">
+          <div className={CONTAINER + ' py-16'}>
             <Step
               number={3}
               title="Панель дежурного фрод-мониторинга"
@@ -72,19 +77,23 @@ export function App() {
             >
               <DutyPanel alerts={alerts} error={alertsError} onChanged={refreshFlagged} />
             </Step>
-
-            <Step number={4} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
-              <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
-            </Step>
           </div>
         </div>
 
-        <section className="mt-20 border-t border-line pt-12">
-          <h2 className="mb-10 text-[28px] leading-tight font-bold">Насколько хорошо это работает</h2>
-          <Metrics />
+        <div className={CONTAINER + ' py-16'}>
+          <Step number={4} title="Выгрузка для аналитика" note="Помеченные счета с причинами — файлом или по API, для инструментов, которые у банка уже есть.">
+            <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
+          </Step>
+        </div>
+
+        <section className={CONTAINER + ' pb-8'}>
+          <div className="border-t border-ink pt-12">
+            <h2 className="mb-10 max-w-[20ch] text-[30px] leading-[1.15] font-bold sm:text-[36px]">Насколько хорошо это работает</h2>
+            <Metrics />
+          </div>
         </section>
 
-        <footer className="mt-16 border-t border-line pt-5 text-[14px] text-muted">
+        <footer className={CONTAINER + ' pt-8 pb-12 text-[14px] text-muted'}>
           Демонстрационный стенд. Данные синтетические, счета и клиенты вымышлены. Описание API —{' '}
           <a className="text-accent underline underline-offset-2" href="/api/openapi.yaml" target="_blank" rel="noreferrer">
             openapi.yaml
@@ -167,7 +176,7 @@ function Step(props: { number: number; title: string; note: string; sticky?: boo
         <span className="tabular grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[14px] text-white">{props.number}</span>
         {props.title}
       </h2>
-      <p className="mt-2 mb-5 text-[15px] text-ink-2">{props.note}</p>
+      <p className="mt-2 mb-6 max-w-[70ch] text-[15px] text-ink-2">{props.note}</p>
       {props.children}
     </section>
   )

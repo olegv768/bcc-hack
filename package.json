@@ -8,6 +8,7 @@
     "service": "tsx watch service/src/server.ts",
     "stand": "vite",
     "train": "tsx ml/train.ts",
+    "tune": "tsx ml/tune.ts",
     "bench": "tsx service/bench.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

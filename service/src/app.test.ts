@@ -13,6 +13,8 @@ const dataFile = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.js
 const dropper = { account_id: 'tok_drop', account_age_days: 3, unrelated_senders_7d: 9, fast_outflow_share_7d: 0.9, shared_device_accounts: 4 }
 const friend = { account_id: 'tok_friend', account_age_days: 1500, unrelated_senders_7d: 0, fast_outflow_share_7d: 0.1, shared_device_accounts: 0 }
 const calm = { amount: 20000, sender_on_call: false, first_transfer_to_recipient: false, amount_to_typical_ratio: 1 }
+// новый получатель без звонка: признаки счёта действуют в полную силу
+const stranger = { ...calm, first_transfer_to_recipient: true }
 const pressured = { amount: 400000, sender_on_call: true, first_transfer_to_recipient: true, amount_to_typical_ratio: 8 }
 
 let url = ''
@@ -61,7 +63,7 @@ describe('POST /score', () => {
     })
     expect(middle).toBeDefined()
     const borderline = { account_id: 'tok_mid', ...middle! }
-    const quiet = await (await score({ recipient: borderline, context: calm })).json()
+    const quiet = await (await score({ recipient: borderline, context: stranger })).json()
     const onCall = await (await score({ recipient: borderline, context: pressured })).json()
     expect(quiet.risk).toBe(onCall.risk)
     expect(quiet.action).toBe('warn')
@@ -83,6 +85,20 @@ describe('POST /score', () => {
 
     const known = await (await score({ recipient: friend, context: { ...context, first_transfer_to_recipient: false } })).json()
     expect(known.action).toBe('allow')
+  })
+
+  test('если клиент уже переводил этому получателю, решение по признакам счёта смягчается на ступень', async () => {
+    const account = { ...dropper, account_id: 'tok_known_recipient' }
+    const first = await (await score({ recipient: account, context: stranger })).json()
+    const repeat = await (await score({ recipient: account, context: calm })).json()
+    const unknown = await (await score({ recipient: account, context: { ...calm, first_transfer_to_recipient: null } })).json()
+    expect(first.action).toBe('hold')
+    expect(repeat.action).toBe('warn')
+    // банк не сообщил, новый ли получатель: смягчения нет
+    expect(unknown.action).toBe('hold')
+    // удалённый доступ отменяет смягчение
+    const remote = await (await score({ recipient: account, context: { ...calm, remote_access_active: true } })).json()
+    expect(remote.action).toBe('hold')
   })
 
   test('отсутствующие признаки не ломают оценку и перечислены в ответе', async () => {
@@ -138,11 +154,11 @@ describe('память о счёте', () => {
   })
 
   test('после отметки «ложное срабатывание» счёт перестаёт тревожить, но звонок всё ещё учитывается', async () => {
-    const first = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: calm })).json()
+    const first = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: stranger })).json()
     expect(first.action).not.toBe('allow')
     await patch(first.alert_id, { status: 'closed', resolution: 'legit' })
 
-    const quiet = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: calm })).json()
+    const quiet = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: stranger })).json()
     expect(quiet.action).toBe('allow')
     const onCall = await (await score({ recipient: { ...transit, account_id: 'tok_ok' }, context: pressured })).json()
     expect(onCall.action).toBe('warn')

@@ -354,8 +354,11 @@ components:
           description: На телефоне клиента включён удалённый доступ к экрану (AnyDesk и подобные) — сигнал клиентского модуля. null — не проверялось.
         first_transfer_to_recipient:
           type: boolean
-          default: false
-          description: Клиент раньше не переводил этому получателю.
+          nullable: true
+          default: null
+          description: |
+            true — клиент раньше не переводил этому получателю; false — уже переводил (тогда решение
+            по признакам счёта смягчается на ступень); null — банк не сообщил, смягчения нет.
         amount_to_typical_ratio:
           type: number
           nullable: true

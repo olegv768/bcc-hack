@@ -15,7 +15,7 @@ import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
 import android.view.WindowInsets
-import android.widget.FrameLayout
+import android.view.WindowInsetsController
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -35,8 +35,8 @@ class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private val time = SimpleDateFormat("HH:mm:ss", Locale.US)
 
-    private lateinit var callTile: SignalTile
-    private lateinit var remoteTile: SignalTile
+    private lateinit var callRow: SignalRow
+    private lateinit var remoteRow: SignalRow
     private lateinit var journal: LinearLayout
     private lateinit var journalEmpty: TextView
 
@@ -56,57 +56,61 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = NAVY
-        window.navigationBarColor = PAPER
+        window.navigationBarColor = Color.WHITE
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        // значки строки состояния — светлые: под ними тёмная шапка
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            window.insetsController?.setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS)
+        }
 
-        callTile = SignalTile("Звонок")
-        remoteTile = SignalTile("Удалённый доступ")
+        callRow = SignalRow("Звонок")
+        remoteRow = SignalRow("Удалённый доступ")
         journal = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        journalEmpty = text(15f, MUTED).apply {
-            text = "Изменений пока не было. Позвоните кому-нибудь и вернитесь сюда."
+        journalEmpty = text(16f, MUTED).apply {
+            text = "Изменений пока не было. Позвоните кому-нибудь и вернитесь в приложение."
+            setLineSpacing(dp(3).toFloat(), 1f)
         }
 
         // тёмная шапка: что это за экран и на каком телефоне идёт проверка
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(NAVY)
-            setPadding(dp(22), dp(28), dp(22), dp(24))
+            setPadding(dp(SIDE), dp(30), dp(SIDE), dp(30))
             // на Android 15+ экран рисуется под строкой состояния: шапка уходит под неё, текст — ниже
             setOnApplyWindowInsetsListener { view, insets ->
-                view.setPadding(dp(22), dp(28) + topInset(insets), dp(22), dp(24))
+                view.setPadding(dp(SIDE), dp(30) + topInset(insets), dp(SIDE), dp(30))
                 insets
             }
-            addView(text(30f, Color.WHITE, heavy = true).apply {
-                text = "Что видит\nмодуль"
-                setLineSpacing(0f, 1.05f)
-                letterSpacing = -0.02f
+            addView(text(29f, Color.WHITE, weight = 600, display = true).apply {
+                text = "Что видит телефон"
+                setLineSpacing(0f, 1.08f)
             })
-            addView(text(15f, Color.argb(190, 255, 255, 255)).apply {
+            addView(text(16f, Color.argb(190, 255, 255, 255)).apply {
                 text = "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}, Android ${Build.VERSION.RELEASE}. " +
-                    "Ни одного разрешения приложение не запрашивает."
-                setLineSpacing(dp(3).toFloat(), 1f)
-            }, spaced(10))
+                    "Приложение не запрашивает ни одного разрешения."
+                setLineSpacing(dp(4).toFloat(), 1f)
+            }, spaced(12))
         }
 
-        // первая плитка наполовину заходит на тёмную шапку: под ней лежит полоса того же цвета
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            setPadding(dp(14), 0, dp(14), dp(28))
+            setBackgroundColor(Color.WHITE)
             setOnApplyWindowInsetsListener { view, insets ->
-                view.setPadding(dp(14), 0, dp(14), dp(28) + bottomInset(insets))
+                view.setPadding(0, 0, 0, dp(32) + bottomInset(insets))
                 insets
             }
-            addView(callTile.view, spaced(0))
-            addView(remoteTile.view, spaced(10))
-            addView(button("Показать предупреждение клиенту") { showWarning() }, spaced(18))
+            // сигналы идут сплошными строками во всю ширину: сработавший закрашивается целиком
+            addView(callRow.view)
+            addView(divider())
+            addView(remoteRow.view)
+            addView(divider())
 
-            addView(LinearLayout(context).apply {
+            addView(padded(button("Показать предупреждение клиенту") { showWarning() }), spaced(24))
+
+            addView(padded(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(8), 0, dp(8), 0)
-                addView(text(20f, INK, heavy = true).apply { text = "Журнал" },
-                    LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
-                addView(text(15f, ACCENT, heavy = true).apply {
+                addView(text(22f, INK, weight = 700).apply { text = "Журнал" }, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
+                addView(text(16f, ACCENT, weight = 600).apply {
                     text = "Очистить"
                     setPadding(dp(12), dp(10), 0, dp(10))
                     setOnClickListener {
@@ -114,29 +118,19 @@ class MainActivity : Activity() {
                         journalEmpty.visibility = View.VISIBLE
                     }
                 })
-            }, spaced(28))
-            addView(LinearLayout(context).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(18), dp(16), dp(18), dp(16))
-                background = rounded(SURFACE, 24)
-                addView(journalEmpty)
-                addView(journal)
-            }, spaced(8))
+            }), spaced(36))
+            addView(padded(journalEmpty), spaced(10))
+            addView(padded(journal), spaced(6))
         }
 
-        val content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            clipChildren = false
-            addView(header)
-            addView(FrameLayout(context).apply {
-                addView(View(context).apply { setBackgroundColor(NAVY) }, FrameLayout.LayoutParams(MATCH_PARENT, dp(44)))
-                addView(body)
-            })
-        }
         setContentView(ScrollView(this).apply {
-            setBackgroundColor(PAPER)
+            setBackgroundColor(Color.WHITE)
             isFillViewport = true
-            addView(content)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(header)
+                addView(body, LinearLayout.LayoutParams(MATCH_PARENT, 0, 1f))
+            })
         })
     }
 
@@ -169,7 +163,7 @@ class MainActivity : Activity() {
     private fun refresh(source: String) {
         val onCall = CallSignal.isOnCall(this)
         val mode = (getSystemService(Context.AUDIO_SERVICE) as AudioManager).mode
-        callTile.show(
+        callRow.show(
             alarm = onCall,
             state = if (onCall) "Идёт разговор" else "Разговора нет",
             detail = "Режим звука: ${modeName(mode)}",
@@ -189,7 +183,7 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             details += "Запись экрана на этой версии Android не определяется"
         }
-        remoteTile.show(
+        remoteRow.show(
             alarm = active,
             state = if (active) "Телефоном могут управлять" else "Не обнаружен",
             detail = details.joinToString("\n"),
@@ -200,17 +194,24 @@ class MainActivity : Activity() {
         }
     }
 
-    /** Новая запись встаёт в начало журнала: цветная точка, событие, время и источник. */
+    /** Новая запись встаёт в начало журнала; точки записей соединены линией, как на шкале времени. */
     private fun addLog(alarm: Boolean, title: String, note: String) {
         journalEmpty.visibility = View.GONE
         val row = LinearLayout(this).apply {
-            setPadding(0, dp(9), 0, dp(9))
-            addView(View(context).apply { background = dot(if (alarm) ALARM else CALM) },
-                LinearLayout.LayoutParams(dp(10), dp(10)).apply { topMargin = dp(6); rightMargin = dp(12) })
+            isBaselineAligned = false
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(text(16f, INK, heavy = true).apply { text = title })
-                addView(text(14f, MUTED).apply { text = "${time.format(Date())}, $note" })
+                gravity = Gravity.CENTER_HORIZONTAL
+                addView(View(context).apply { background = dot(if (alarm) ALARM else CALM) },
+                    LinearLayout.LayoutParams(dp(12), dp(12)).apply { topMargin = dp(5) })
+                addView(View(context).apply { setBackgroundColor(LINE) },
+                    LinearLayout.LayoutParams(dp(2), 0, 1f).apply { topMargin = dp(5) })
+            }, LinearLayout.LayoutParams(dp(12), MATCH_PARENT).apply { rightMargin = dp(14) })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 0, 0, dp(20))
+                addView(text(17f, INK, weight = 600).apply { text = title })
+                addView(text(15f, MUTED).apply { text = "${time.format(Date())}, $note" }, spaced(2))
             })
         }
         journal.addView(row, 0)
@@ -241,38 +242,47 @@ class MainActivity : Activity() {
 
     // --- оформление: без библиотек, чтобы пример оставался маленьким ---
 
-    /** Плитка одного сигнала. Спокойное состояние — белая, сработавшее — сплошная красная. */
-    private inner class SignalTile(title: String) {
-        private val label = text(15f, MUTED).apply { text = title }
-        private val state = text(26f, INK, heavy = true).apply { letterSpacing = -0.01f }
-        private val detail = text(15f, MUTED).apply { setLineSpacing(dp(3).toFloat(), 1f) }
-        private val chip = text(13f, Color.WHITE, heavy = true).apply {
-            setPadding(dp(12), dp(5), dp(12), dp(5))
-        }
+    /** Строка одного сигнала во всю ширину экрана. Спокойная — белая, сработавшая — сплошная красная. */
+    private inner class SignalRow(title: String) {
+        private val label = text(16f, MUTED).apply { text = title }
+        private val state = text(23f, INK, weight = 600, display = true).apply { setLineSpacing(0f, 1.1f) }
+        private val detail = text(16f, MUTED).apply { setLineSpacing(dp(4).toFloat(), 1f) }
+        private val chip = text(14f, Color.WHITE, weight = 600).apply { setPadding(dp(13), dp(6), dp(13), dp(6)) }
         val view: LinearLayout = LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(20), dp(22), dp(22))
-            elevation = dp(2).toFloat()
+            setPadding(dp(SIDE), dp(24), dp(SIDE), dp(26))
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(label, LinearLayout.LayoutParams(0, WRAP_CONTENT, 1f))
                 addView(chip)
             })
-            addView(state, spaced(10))
-            addView(detail, spaced(6))
+            addView(state, spaced(12))
+            addView(detail, spaced(8))
         }
 
         fun show(alarm: Boolean, state: String, detail: String) {
-            view.background = rounded(if (alarm) ALARM else SURFACE, 28)
-            label.setTextColor(if (alarm) Color.argb(210, 255, 255, 255) else MUTED)
+            view.setBackgroundColor(if (alarm) ALARM else Color.WHITE)
+            label.setTextColor(if (alarm) Color.argb(215, 255, 255, 255) else MUTED)
             this.state.text = state
             this.state.setTextColor(if (alarm) Color.WHITE else INK)
             this.detail.text = detail
-            this.detail.setTextColor(if (alarm) Color.argb(225, 255, 255, 255) else MUTED)
+            this.detail.setTextColor(if (alarm) Color.argb(230, 255, 255, 255) else MUTED)
             chip.text = if (alarm) "сработал" else "спокойно"
             chip.setTextColor(if (alarm) ALARM else CALM_INK)
             chip.background = rounded(if (alarm) Color.WHITE else CALM_BG, 100)
         }
+    }
+
+    private fun divider() = View(this).apply {
+        setBackgroundColor(LINE)
+        layoutParams = LinearLayout.LayoutParams(MATCH_PARENT, dp(1))
+    }
+
+    /** Оборачивает блок в боковые поля экрана. */
+    private fun padded(child: View) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(SIDE), 0, dp(SIDE), 0)
+        addView(child, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
     }
 
     private fun rounded(fill: Int, radius: Int) = GradientDrawable().apply {
@@ -285,17 +295,35 @@ class MainActivity : Activity() {
         setColor(color)
     }
 
-    private fun text(size: Float, color: Int, heavy: Boolean = false) = TextView(this).apply {
+    /**
+     * Шрифты те же, что на стенде: Onest для текста, Unbounded для заголовков (лежат в assets/fonts).
+     * Насыщенность задаётся числом; на Android 7 переменные шрифты не поддерживаются — берём системный.
+     */
+    private fun font(display: Boolean, weight: Int): Typeface {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return Typeface.create("sans-serif", if (weight >= 600) Typeface.BOLD else Typeface.NORMAL)
+        }
+        return fonts.getOrPut(display to weight) {
+            Typeface.Builder(assets, if (display) "fonts/Unbounded.ttf" else "fonts/Onest.ttf")
+                .setFontVariationSettings("'wght' $weight")
+                .build()
+        }
+    }
+
+    private val fonts = HashMap<Pair<Boolean, Int>, Typeface>()
+
+    private fun text(size: Float, color: Int, weight: Int = 400, display: Boolean = false) = TextView(this).apply {
         textSize = size
         setTextColor(color)
-        typeface = if (heavy) Typeface.create("sans-serif-medium", Typeface.BOLD) else Typeface.create("sans-serif", Typeface.NORMAL)
+        typeface = font(display, weight)
+        includeFontPadding = false
     }
 
     private fun button(label: String, onClick: () -> Unit) = TextView(this).apply {
         text = label
         textSize = 17f
         gravity = Gravity.CENTER
-        typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
+        typeface = font(display = false, weight = 600)
         setTextColor(Color.WHITE)
         minHeight = dp(58)
         background = rounded(ACCENT, 100)
@@ -315,11 +343,11 @@ class MainActivity : Activity() {
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
     private companion object {
+        const val SIDE = 22 // боковые поля экрана
         val NAVY = Color.rgb(0x0B, 0x16, 0x38)
-        val PAPER = Color.rgb(0xEE, 0xF1, 0xF6)
-        val SURFACE = Color.WHITE
         val INK = Color.rgb(0x0E, 0x1B, 0x3D)
         val MUTED = Color.rgb(0x5C, 0x66, 0x80)
+        val LINE = Color.rgb(0xE1, 0xE5, 0xEE)
         val ACCENT = Color.rgb(0x2F, 0x5B, 0xFF)
         val CALM = Color.rgb(0x0B, 0x82, 0x50)
         val CALM_BG = Color.rgb(0xD8, 0xF4, 0xE6)
