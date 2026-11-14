@@ -139,7 +139,8 @@ const logisticThresholds = thresholdsFor(logisticScore)
 
 const result = evaluate(ebmScore, model.thresholds, test, true)
 // потолок: модель, которая знает формулы генератора (есть только для синтетики)
-const ceiling = dataFile ? null : evaluate(idealScore, thresholdsFor(idealScore), test)
+const idealThresholds = dataFile ? null : thresholdsFor(idealScore)
+const ceiling = idealThresholds && evaluate(idealScore, idealThresholds, test)
 const baseline = evaluate(logisticScore, logisticThresholds, test)
 
 const scored = test.map((a) => ({ ...a, risk: ebmScore(a.features) }))
@@ -166,6 +167,8 @@ const stress = shifted && {
   droppers: shifted.filter((a) => a.is_dropper).length,
   model: evaluate(ebmScore, model.thresholds, shifted),
   baseline: evaluate(logisticScore, logisticThresholds, shifted),
+  // идеальная модель тоже «не знает» о смене тактики: формулы и пороги у неё от прежних данных
+  ceiling: evaluate(idealScore, idealThresholds!, shifted),
 }
 
 // --- переводы: что делает сервис целиком (модель + обстоятельства перевода; только для синтетики) ---
@@ -242,7 +245,7 @@ console.log('\nПо типам счетов (доля выше порога warn
 for (const k of byKind) console.log(`  ${k.kind.padEnd(15)} ${String(k.count).padStart(6)}  ${pct(k.above_warn).padStart(6)} / ${pct(k.above_hold).padStart(6)}`)
 if (stress) {
   console.log(`\nДропперы стали осторожнее (${stress.droppers} дропперов, пороги прежние)`)
-  for (const [name, r] of [['объяснимый бустинг', stress.model], ['логистическая регр.', stress.baseline]] as const) {
+  for (const [name, r] of [['объяснимый бустинг', stress.model], ['логистическая регр.', stress.baseline], ['потолок (идеал)', stress.ceiling]] as const) {
     const [w, h] = r.account_level
     console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
   }

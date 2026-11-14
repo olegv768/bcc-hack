@@ -197,6 +197,25 @@
           "precision": 0.7703472101999475
         }
       ]
+    },
+    "ceiling": {
+      "auc": 0.9886721596192969,
+      "account_level": [
+        {
+          "threshold": "warn",
+          "value": 0.0433,
+          "droppers_found": 0.8779904306220095,
+          "honest_flagged": 0.02032478807067715,
+          "precision": 0.47081262098039584
+        },
+        {
+          "threshold": "hold",
+          "value": 0.2224,
+          "droppers_found": 0.7296650717703349,
+          "honest_flagged": 0.0032683076294556224,
+          "precision": 0.8213669774990319
+        }
+      ]
     }
   },
   "transfer_level": {
