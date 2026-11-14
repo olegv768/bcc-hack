@@ -9,6 +9,7 @@
     "stand": "vite",
     "train": "tsx ml/train.ts",
     "tune": "tsx ml/tune.ts",
+    "shadow-report": "tsx ml/shadow-report.ts",
     "bench": "tsx service/bench.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

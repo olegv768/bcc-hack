@@ -254,6 +254,36 @@ describe('очередь алертов для аналитика', () => {
     server.close()
   })
 
+  test('в теневом режиме сервис ничего не блокирует, но записывает рекомендацию и не шлёт вебхук', async () => {
+    let calls = 0
+    const bank = createServer((_req, res) => {
+      calls++
+      res.end()
+    }).listen(0, '127.0.0.1')
+    await new Promise((resolve) => bank.once('listening', resolve))
+    const webhook = `http://127.0.0.1:${(bank.address() as AddressInfo).port}/cases`
+
+    const file = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.json')
+    const server = createApp({ model, dataFile: file, openapi: '', alertWebhook: webhook, shadow: true }).listen(0, '127.0.0.1')
+    await new Promise((resolve) => server.once('listening', resolve))
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    const body = await (
+      await fetch(base + '/score', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ transfer_id: 'tr_shadow', recipient: dropper, context: pressured }),
+      })
+    ).json()
+
+    expect(body).toMatchObject({ mode: 'shadow', action: 'allow', recommended_action: 'hold', client_message: null })
+    const queue = await (await fetch(base + '/alerts')).json()
+    expect(queue.items[0]).toMatchObject({ transfer_id: 'tr_shadow', action: 'hold' })
+    await new Promise((resolve) => setTimeout(resolve, 200))
+    expect(calls).toBe(0)
+    server.close()
+    bank.close()
+  })
+
   test('новый алерт сразу уходит в систему банка, если задан её адрес', async () => {
     const received: { priority: string; alert_id: string }[] = []
     const bank = createServer((req, res) => {

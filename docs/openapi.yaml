@@ -367,7 +367,7 @@ components:
           description: Сумма перевода, делённая на обычный перевод этого клиента (например, медиану за 90 дней).
     ScoreResponse:
       type: object
-      required: [request_id, risk, risk_level, action, reasons, client_message, contributions, missing_features, model_version]
+      required: [request_id, risk, risk_level, mode, action, recommended_action, reasons, client_message, contributions, missing_features, model_version]
       properties:
         request_id:
           type: string
@@ -383,10 +383,20 @@ components:
         risk_level:
           type: string
           enum: [low, medium, high]
+        mode:
+          type: string
+          enum: [enforce, shadow]
+          description: shadow — теневой режим пилота (сервис запущен с SHADOW=1).
         action:
           type: string
           enum: [allow, warn, hold]
-          description: Рекомендация — пропустить, предупредить клиента, придержать перевод. Решение остаётся за банком.
+          description: |
+            Рекомендация — пропустить, предупредить клиента, придержать перевод. Решение остаётся за банком.
+            В теневом режиме всегда allow, чтобы пилот ничего не менял в переводах.
+        recommended_action:
+          type: string
+          enum: [allow, warn, hold]
+          description: Что сервис рекомендовал бы на самом деле. Вне теневого режима совпадает с action.
         alert_id:
           type: string
           nullable: true

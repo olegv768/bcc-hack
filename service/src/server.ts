@@ -1,5 +1,5 @@
 // Запуск сервиса: npm run service
-// Настройки (все необязательные): PORT, HOST, SCORE_API_KEY, DATA_FILE, ALERT_WEBHOOK_URL, DEMO=0
+// Настройки (все необязательные): PORT, HOST, SCORE_API_KEY, DATA_FILE, ALERT_WEBHOOK_URL, SHADOW=1, DEMO=0
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -16,6 +16,7 @@ const app = createApp({
   dataFile: process.env.DATA_FILE ?? fileURLToPath(new URL('../data/flagged.json', import.meta.url)),
   apiKey: process.env.SCORE_API_KEY,
   alertWebhook: process.env.ALERT_WEBHOOK_URL,
+  shadow: process.env.SHADOW === '1',
   demo: process.env.DEMO !== '0',
 })
 

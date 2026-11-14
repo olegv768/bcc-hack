@@ -17,7 +17,9 @@ export type ScoreResponse = {
   request_id: string
   risk: number
   risk_level: 'low' | 'medium' | 'high'
+  mode: 'enforce' | 'shadow'
   action: Action
+  recommended_action: Action
   alert_id: string | null
   reasons: { code: string; text: string; contribution: number | null }[]
   client_message: { title: string; body: string } | null

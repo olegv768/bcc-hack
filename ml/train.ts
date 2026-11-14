@@ -76,11 +76,18 @@ type Scorer = (features: RecipientFeatures) => number
 type Thresholds = Model['thresholds']
 const round = (value: number, digits: number) => Math.round(value * 10 ** digits) / 10 ** digits
 
-function thresholdsFor(score: Scorer): Thresholds {
+function thresholdsFor(score: Scorer, fpr: Thresholds = TARGET_FPR): Thresholds {
   const honest = validation.filter((a) => !a.is_dropper).map((a) => score(a.features)).sort((a, b) => b - a)
-  const at = (fpr: number) => round(honest[Math.floor(honest.length * fpr)]!, 4)
-  return { soft: at(TARGET_FPR.soft), warn: at(TARGET_FPR.warn), hold: at(TARGET_FPR.hold) }
+  const at = (share: number) => round(honest[Math.floor(honest.length * share)]!, 4)
+  return { soft: at(fpr.soft), warn: at(fpr.warn), hold: at(fpr.hold) }
 }
+
+// Три варианта строгости. Банк выбирает свой после пилота; здесь — чтобы было видно, чем он платит за выбор.
+const PRESETS: { id: string; name: string; fpr: Thresholds }[] = [
+  { id: 'soft', name: 'Мягче', fpr: { soft: 0.05, warn: 0.01, hold: 0.001 } },
+  { id: 'base', name: 'Как сейчас', fpr: TARGET_FPR },
+  { id: 'strict', name: 'Строже', fpr: { soft: 0.2, warn: 0.05, hold: 0.01 } },
+]
 
 const share = (risks: number[], threshold: number) => (risks.length ? risks.filter((r) => r >= threshold).length / risks.length : 0)
 
@@ -173,9 +180,11 @@ const stress = shifted && {
 
 // --- переводы: что делает сервис целиком (модель + обстоятельства перевода; только для синтетики) ---
 
-function transferLevel(withCallSignal: boolean, withKnownRecipient = true) {
+function transferLevel(withCallSignal: boolean, withKnownRecipient = true, thresholds: Thresholds = model.thresholds) {
   const transferRng = createRng(SEED + 1)
-  const counts = { fraud: { allow: 0, warn: 0, hold: 0, total: 0 }, honest: { allow: 0, warn: 0, hold: 0, total: 0 } }
+  const scoring = { ...model, thresholds }
+  const empty = () => ({ allow: 0, warn: 0, hold: 0, total: 0, amount: { allow: 0, warn: 0, hold: 0, total: 0 } })
+  const counts = { fraud: empty(), honest: empty() }
   for (const account of test) {
     const group = account.is_dropper ? counts.fraud : counts.honest
     // на дроппера приходит несколько жертв, чтобы оценка по мошенническим переводам была устойчивее
@@ -184,11 +193,22 @@ function transferLevel(withCallSignal: boolean, withKnownRecipient = true) {
       if (!withCallSignal) context.sender_on_call = null
       // банк не сообщает, что клиент уже переводил получателю: правило смягчения не действует
       if (!withKnownRecipient && context.first_transfer_to_recipient === false) context.first_transfer_to_recipient = null
-      group[decide(model, account.features, context).action]++
+      const action = decide(scoring, account.features, context).action
+      group[action]++
       group.total++
+      group.amount[action] += context.amount
+      group.amount.total += context.amount
     }
   }
-  const rates = (g: typeof counts.fraud) => ({ warn: g.warn / g.total, hold: g.hold / g.total, total: g.total })
+  const rates = (g: typeof counts.fraud) => ({
+    warn: g.warn / g.total,
+    hold: g.hold / g.total,
+    total: g.total,
+    // доли суммы: крупные мошеннические переводы ловятся чаще, поэтому по сумме доля выше, чем по штукам
+    warn_amount: g.amount.warn / g.amount.total,
+    hold_amount: g.amount.hold / g.amount.total,
+    average_amount: Math.round(g.amount.total / g.total),
+  })
   return { fraud: rates(counts.fraud), honest: rates(counts.honest) }
 }
 
@@ -218,6 +238,11 @@ const metrics = {
         without_call_signal: transferLevel(false),
         // то же, что with_call_signal, но без правила «клиент уже переводил этому получателю»
         without_known_recipient_rule: transferLevel(true, false),
+        // одни и те же переводы при разной строгости порогов: на этом строится расчёт выгоды для банка
+        presets: PRESETS.map((preset) => {
+          const thresholds = thresholdsFor(ebmScore, preset.fpr)
+          return { id: preset.id, name: preset.name, target_fpr: preset.fpr, thresholds, ...transferLevel(true, true, thresholds) }
+        }),
       },
   roc,
 }
@@ -259,5 +284,13 @@ if (metrics.transfer_level) {
     console.log(`\nПереводы, ${title}`)
     console.log(`  мошеннические: придержано ${pct(t.fraud.hold)}, предупреждение ${pct(t.fraud.warn)}, пропущено ${pct(1 - t.fraud.hold - t.fraud.warn)}`)
     console.log(`  честные:       придержано ${pct(t.honest.hold)}, предупреждение ${pct(t.honest.warn)}`)
+  }
+}
+
+if (metrics.transfer_level) {
+  console.log('\nСтрогость порогов (все сигналы)          мошеннические: замечено / по сумме придержано    честные: зря на 10 000')
+  for (const p of metrics.transfer_level.presets) {
+    const seen = p.fraud.hold + p.fraud.warn
+    console.log(`  ${p.name.padEnd(12)} ${pct(seen).padStart(26)} / ${pct(p.fraud.hold_amount).padStart(22)}    ${Math.round((p.honest.hold + p.honest.warn) * 10000)}`)
   }
 }

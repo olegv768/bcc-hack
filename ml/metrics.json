@@ -235,38 +235,148 @@
       "fraud": {
         "warn": 0.13271832718327184,
         "hold": 0.821709717097171,
-        "total": 16260
+        "total": 16260,
+        "warn_amount": 0.1375857469512195,
+        "hold_amount": 0.8208587791663521,
+        "average_amount": 208500
       },
       "honest": {
         "warn": 0.0073748947354990175,
         "hold": 0.0010207466761936357,
-        "total": 39187
+        "total": 39187,
+        "warn_amount": 0.00789748895374634,
+        "hold_amount": 0.001077578751567464,
+        "average_amount": 41679
       }
     },
     "without_call_signal": {
       "fraud": {
         "warn": 0.12503075030750307,
         "hold": 0.7636531365313654,
-        "total": 16260
+        "total": 16260,
+        "warn_amount": 0.12329889493506004,
+        "hold_amount": 0.7650854165880088,
+        "average_amount": 208500
       },
       "honest": {
         "warn": 0.00658381606144895,
         "hold": 0.0009697093423839539,
-        "total": 39187
+        "total": 39187,
+        "warn_amount": 0.006175444637463017,
+        "hold_amount": 0.0010034339863317708,
+        "average_amount": 41679
       }
     },
     "without_known_recipient_rule": {
       "fraud": {
         "warn": 0.09501845018450185,
         "hold": 0.8637146371463714,
-        "total": 16260
+        "total": 16260,
+        "warn_amount": 0.09695151447934758,
+        "hold_amount": 0.8648415082496413,
+        "average_amount": 208500
       },
       "honest": {
         "warn": 0.01941970551458392,
         "hold": 0.003062240028580907,
-        "total": 39187
+        "total": 39187,
+        "warn_amount": 0.021228423858009896,
+        "hold_amount": 0.0029949342165723897,
+        "average_amount": 41679
       }
-    }
+    },
+    "presets": [
+      {
+        "id": "soft",
+        "name": "Мягче",
+        "target_fpr": {
+          "soft": 0.05,
+          "warn": 0.01,
+          "hold": 0.001
+        },
+        "thresholds": {
+          "soft": 0.4002,
+          "warn": 0.8812,
+          "hold": 0.9887
+        },
+        "fraud": {
+          "warn": 0.1641451414514145,
+          "hold": 0.7675276752767528,
+          "total": 16260,
+          "warn_amount": 0.17777499197689345,
+          "hold_amount": 0.7640448314675677,
+          "average_amount": 208500
+        },
+        "honest": {
+          "warn": 0.0039043560364406564,
+          "hold": 0.0003317426697629316,
+          "total": 39187,
+          "warn_amount": 0.004479115268660281,
+          "hold_amount": 0.0004995434678431214,
+          "average_amount": 41679
+        }
+      },
+      {
+        "id": "base",
+        "name": "Как сейчас",
+        "target_fpr": {
+          "soft": 0.1,
+          "warn": 0.02,
+          "hold": 0.003
+        },
+        "thresholds": {
+          "soft": 0.1305,
+          "warn": 0.7326,
+          "hold": 0.9652
+        },
+        "fraud": {
+          "warn": 0.13271832718327184,
+          "hold": 0.821709717097171,
+          "total": 16260,
+          "warn_amount": 0.1375857469512195,
+          "hold_amount": 0.8208587791663521,
+          "average_amount": 208500
+        },
+        "honest": {
+          "warn": 0.0073748947354990175,
+          "hold": 0.0010207466761936357,
+          "total": 39187,
+          "warn_amount": 0.00789748895374634,
+          "hold_amount": 0.001077578751567464,
+          "average_amount": 41679
+        }
+      },
+      {
+        "id": "strict",
+        "name": "Строже",
+        "target_fpr": {
+          "soft": 0.2,
+          "warn": 0.05,
+          "hold": 0.01
+        },
+        "thresholds": {
+          "soft": 0.0179,
+          "warn": 0.4002,
+          "hold": 0.8812
+        },
+        "fraud": {
+          "warn": 0.10621156211562116,
+          "hold": 0.867220172201722,
+          "total": 16260,
+          "warn_amount": 0.1063280778052556,
+          "hold_amount": 0.8667257584195424,
+          "average_amount": 208500
+        },
+        "honest": {
+          "warn": 0.019062444177916145,
+          "hold": 0.0031898333631051115,
+          "total": 39187,
+          "warn_amount": 0.020126293454205014,
+          "hold_amount": 0.0030726913196684512,
+          "average_amount": 41679
+        }
+      }
+    ]
   },
   "roc": [
     {

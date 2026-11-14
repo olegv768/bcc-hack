@@ -1,4 +1,5 @@
 import metrics from '../../ml/metrics.json'
+import { BusinessCase } from './BusinessCase.tsx'
 import { KIND_LABELS, percent } from './scenarios.ts'
 import { TradeoffChart } from './TradeoffChart.tsx'
 
@@ -64,6 +65,14 @@ export function Metrics() {
         обучении не видела. Данные синтетические: счета и переводы создаёт наш генератор, поэтому числа показывают, как сервис справляется
         с заложенными нами случаями, а не качество на данных банка.
       </p>
+
+      <dl className="grid gap-x-12 gap-y-8 border-y border-line py-8 sm:grid-cols-3">
+        <BankFigure value={percent(all.fraud.hold_amount, 0)} label="суммы мошеннических переводов сервис придержал бы" />
+        <BankFigure value={percent(all.fraud.warn_amount, 0)} label="суммы ушло бы под предупреждение: часть клиентов отменит перевод сама" />
+        <BankFigure value={`${per(bothered(all), 10000)} из 10 000`} label="честных переводов сервис побеспокоит зря" />
+      </dl>
+
+      <BusinessCase />
 
       <div>
         <h3 className="text-[19px] font-semibold">Одна оценка счёта: новая модель против прежней</h3>
@@ -274,5 +283,14 @@ function Key(props: { color: string; count: number; text: string }) {
       <b className="tabular min-w-[3ch] text-right">{props.count}</b>
       {props.text}
     </li>
+  )
+}
+
+function BankFigure(props: { value: string; label: string }) {
+  return (
+    <div>
+      <dd className="tabular font-display text-[34px] leading-tight font-semibold">{props.value}</dd>
+      <dt className="mt-1 text-[15px] text-ink-2">{props.label}</dt>
+    </div>
   )
 }

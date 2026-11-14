@@ -81,6 +81,9 @@ export function createApp(options: {
   apiKey?: string
   demo?: boolean
   alertWebhook?: string // адрес системы ведения инцидентов банка; если задан, каждый новый алерт уходит туда сразу
+  // Теневой режим для пилота: сервис всё считает и записывает, но отвечает «пропустить» и никого не беспокоит.
+  // Настоящая рекомендация — в поле recommended_action и в очереди алертов, для сравнения с подтверждёнными случаями.
+  shadow?: boolean
 }) {
   const { model } = options
   const store = createStore(options.dataFile)
@@ -149,7 +152,7 @@ export function createApp(options: {
         model_version: model.version,
       })
       alertId = alert.alert_id
-      notify(alert)
+      if (!options.shadow) notify(alert)
       store.add({
         account_id,
         risk: result.risk,
@@ -167,10 +170,13 @@ export function createApp(options: {
       transfer_id: parsed.data.transfer_id ?? null,
       risk: result.risk,
       risk_level: riskLevel(model, result.risk),
-      action: result.action,
+      mode: options.shadow ? 'shadow' : 'enforce',
+      // в теневом режиме банк ничего не меняет в переводе: action всегда allow
+      action: options.shadow ? 'allow' : result.action,
+      recommended_action: result.action,
       alert_id: alertId,
       reasons,
-      client_message: clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true }, lang),
+      client_message: options.shadow ? null : clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true }, lang),
       // вклад каждого признака в оценку — чтобы аналитик видел, из чего она сложилась
       contributions: Object.fromEntries(FEATURE_KEYS.map((key) => [key, Math.round(result.contributions[key] * 100) / 100])),
       missing_features: result.missing,
