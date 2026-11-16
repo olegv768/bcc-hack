@@ -96,3 +96,7 @@ export const percent = (value: number, digits = 1) =>
   (value * 100).toLocaleString('ru-RU', { minimumFractionDigits: digits, maximumFractionDigits: digits }) + '%'
 
 export const money = (value: number) => value.toLocaleString('ru-RU') + ' ₸'
+
+// Оценка 0,996 при округлении дала бы «1,00» — будто сервис уверен на все сто. Показываем «> 0,99».
+export const riskText = (value: number) =>
+  value >= 0.995 ? '> 0,99' : value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })

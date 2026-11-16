@@ -1,7 +1,7 @@
 import model from '../../service/model/model.json'
 import type { ScoreRequest, ScoreResponse } from './api.ts'
 import { ContributionChart } from './ContributionChart.tsx'
-import { ACTION_LABELS } from './scenarios.ts'
+import { ACTION_LABELS, riskText } from './scenarios.ts'
 
 const BADGE_CLASS = {
   allow: 'bg-allow-bg text-allow-ink',
@@ -22,7 +22,7 @@ const ACTION_NOTE = {
   hold: 'Перевод не уходит, пока банк его не проверит.',
 }
 
-const fixed = (value: number) => value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+const fixed = riskText
 
 export function ActionBadge(props: { action: keyof typeof BADGE_CLASS }) {
   return (
@@ -142,7 +142,12 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
         </div>
 
         <details className="rounded-[16px] bg-field">
-          <summary className="cursor-pointer rounded-[16px] px-4 py-3 text-[15px] font-medium">Запрос и ответ целиком (JSON)</summary>
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[16px] px-4 py-3 text-[15px] font-medium [&::-webkit-details-marker]:hidden">
+            <svg width="12" height="12" viewBox="0 0 12 12" className="details-chevron shrink-0 text-muted" aria-hidden="true">
+              <path d="M4 2.5 7.5 6 4 9.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Запрос и ответ целиком (JSON)
+          </summary>
           <div className="grid gap-3 px-4 pb-4 text-[12px]">
             <pre className="overflow-x-auto font-mono">POST /score{'\n' + JSON.stringify(request, null, 2)}</pre>
             <pre className="overflow-x-auto border-t border-line pt-3 font-mono">200 OK{'\n' + JSON.stringify(response, null, 2)}</pre>

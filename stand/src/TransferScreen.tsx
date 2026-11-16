@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { callSignal, remoteAccessSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
 import { score, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { CLIENT_REF, money, SCENARIOS, TYPICAL_TRANSFER } from './scenarios.ts'
+import { NumberInput } from './NumberInput.tsx'
 
 type Outcome = 'sent' | 'cancelled' | 'held'
 
@@ -104,13 +105,10 @@ export function TransferScreen(props: { onScored: (request: ScoreRequest, respon
 
           <label className="block rounded-[20px] bg-field px-4 py-3 focus-within:ring-2 focus-within:ring-accent">
             <span className="text-[13px] text-muted">Сумма, ₸</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              min={100}
-              step={100}
-              value={Number.isFinite(amount) ? amount : ''}
-              onChange={(e) => setAmount(e.target.valueAsNumber)}
+            <NumberInput
+              value={amount}
+              onChange={setAmount}
+              aria-invalid={!amountValid}
               className="tabular block w-full bg-transparent font-display text-[28px] font-semibold outline-none!"
             />
             <span className="text-[13px] text-muted">

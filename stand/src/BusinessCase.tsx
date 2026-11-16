@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import metrics from '../../ml/metrics.json'
+import { NumberInput } from './NumberInput.tsx'
 
 // Расчёт выгоды для банка: банк вводит свои числа, доли берутся из проверки сервиса (ml/metrics.json).
 // Формулы те же, что в docs/BUSINESS_CASE.md.
@@ -52,12 +53,10 @@ export function BusinessCase() {
     <label className="block">
       <span className="block text-[14px] text-ink-2">{label}</span>
       <span className="mt-1 flex items-center rounded-[12px] bg-field px-3 focus-within:ring-2 focus-within:ring-accent">
-        <input
-          type="number"
-          inputMode="decimal"
-          min={0}
-          value={Number.isFinite(inputs[key]) ? inputs[key] : ''}
-          onChange={(e) => setInputs({ ...inputs, [key]: Math.max(0, e.target.valueAsNumber) })}
+        <NumberInput
+          decimal
+          value={inputs[key]}
+          onChange={(value) => setInputs({ ...inputs, [key]: Math.max(0, value) })}
           className="tabular min-w-0 flex-1 bg-transparent py-2.5 text-[16px] font-semibold outline-none!"
         />
         <span className="shrink-0 pl-2 text-[14px] text-muted">{unit}</span>

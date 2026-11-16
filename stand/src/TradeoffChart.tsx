@@ -1,4 +1,4 @@
-import { line, scaleLinear } from 'd3'
+import { area, curveMonotoneX, line, scaleLinear } from 'd3'
 import { useState } from 'react'
 import { useWidth } from './useWidth.ts'
 
@@ -41,7 +41,14 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
     .range([HEIGHT - MARGIN.bottom, MARGIN.top])
   const path = line<Point>()
     .x((p) => x(p.honest_flagged))
-    .y((p) => y(p.droppers_found))(points)
+    .y((p) => y(p.droppers_found))
+    .curve(curveMonotoneX)(points)
+  // лёгкая заливка под линией: глаз сразу видит, сколько «набрано»
+  const fill = area<Point>()
+    .x((p) => x(p.honest_flagged))
+    .y0(HEIGHT - MARGIN.bottom)
+    .y1((p) => y(p.droppers_found))
+    .curve(curveMonotoneX)(points)
   const narrow = width < 480
 
   const onMove = (event: React.PointerEvent<SVGSVGElement>) => {
@@ -68,13 +75,13 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
             {/* сетка и подписи по вертикали: мошенников из 100 */}
             {y.ticks(narrow ? 3 : 5).map((tick) => (
               <g key={tick}>
-                <line x1={MARGIN.left} x2={right} y1={y(tick)} y2={y(tick)} stroke="#e6e9f0" />
+                <line x1={MARGIN.left} x2={right} y1={y(tick)} y2={y(tick)} stroke="#e9ecf3" strokeDasharray="2 4" />
                 <text x={MARGIN.left - 10} y={y(tick) + 4} fontSize={12} textAnchor="end" fill="#69728a" className="tabular">
                   {Math.round(tick * 100)}
                 </text>
               </g>
             ))}
-            <line x1={MARGIN.left} x2={right} y1={HEIGHT - MARGIN.bottom} y2={HEIGHT - MARGIN.bottom} stroke="#c5cbd8" />
+            <line x1={MARGIN.left} x2={right} y1={HEIGHT - MARGIN.bottom} y2={HEIGHT - MARGIN.bottom} stroke="#d5dae6" />
 
             {/* подписи по горизонтали: честных из 1000 */}
             {x.ticks(narrow ? 5 : 10).map((tick) => (
@@ -102,28 +109,25 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
               Мошенников из 100 замечено
             </text>
 
-            <path d={path ?? ''} fill="none" stroke={LINE} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+            <path d={fill ?? ''} fill={LINE} fillOpacity={0.07} />
+            <path d={path ?? ''} fill="none" stroke={LINE} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
 
             {props.marks.map((mark) => {
               const cx = x(mark.honest_flagged)
               const cy = y(mark.droppers_found)
               // подпись — под точкой; у правого края уходит влево, чтобы не обрезалась
               const toLeft = cx > right - 170
+              const text = `${mark.label} · ${Math.round(mark.droppers_found * 100)} из 100`
+              const w = text.length * 6.6 + 20
+              const px = toLeft ? cx - 12 - w : cx + 12
               return (
                 <g key={mark.label}>
+                  <line x1={cx} x2={cx} y1={cy} y2={HEIGHT - MARGIN.bottom} stroke={LINE} strokeOpacity={0.35} strokeDasharray="2 3" />
                   <circle cx={cx} cy={cy} r={6} fill={LINE} stroke="#ffffff" strokeWidth={2.5} />
-                  <text
-                    x={toLeft ? cx - 10 : cx + 10}
-                    y={cy + 22}
-                    fontSize={13}
-                    fontWeight={600}
-                    textAnchor={toLeft ? 'end' : 'start'}
-                    fill="#0e1b3d"
-                    stroke="#ffffff"
-                    strokeWidth={4}
-                    paintOrder="stroke"
-                  >
-                    {mark.label}
+                  {/* подпись — «таблетка» под точкой */}
+                  <rect x={px} y={cy + 10} width={w} height={24} rx={12} fill="#0b1638" />
+                  <text x={px + w / 2} y={cy + 26} fontSize={12.5} fontWeight={600} textAnchor="middle" fill="#ffffff">
+                    {text}
                   </text>
                 </g>
               )

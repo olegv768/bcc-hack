@@ -156,8 +156,8 @@ export function Metrics() {
                       <tr key={k.kind} className="border-b border-line">
                         <td className={cell}>{KIND_LABELS[k.kind]}</td>
                         <td className={number + ' hidden text-muted sm:table-cell'}>{count(k.count)}</td>
-                        <td className={number}>{percent(k.above_warn, 0)}</td>
-                        <td className={number}>{percent(k.above_hold, 0)}</td>
+                        <Share value={k.above_warn} caught={isDropper} className={number} />
+                        <Share value={k.above_hold} caught={isDropper} className={number} />
                       </tr>
                     ))}
                 </tbody>
@@ -280,6 +280,20 @@ function Key(props: { color: string; count: number; text: string }) {
       <b className="tabular min-w-[3ch] text-right">{props.count}</b>
       {props.text}
     </li>
+  )
+}
+
+// Доля с полоской: у мошеннических счетов полоса — сколько поймано, у честных — сколько побеспокоено зря.
+function Share(props: { value: number; caught: boolean; className: string }) {
+  return (
+    <td className={props.className}>
+      <span className="inline-flex items-center justify-end gap-2.5">
+        <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-field sm:block" aria-hidden="true">
+          <span className={'block h-full rounded-full ' + (props.caught ? 'bg-accent' : 'bg-warn')} style={{ width: `${Math.max(props.value > 0 ? 4 : 0, props.value * 100)}%` }} />
+        </span>
+        <span className="min-w-[3ch]">{percent(props.value, 0)}</span>
+      </span>
+    </td>
   )
 }
 

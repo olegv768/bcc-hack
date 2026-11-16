@@ -4,7 +4,7 @@ import { createRng } from '../../ml/random.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
 import { clearFlagged, score } from './api.ts'
 import { ActionBadge } from './ScorePanel.tsx'
-import { money } from './scenarios.ts'
+import { money, riskText } from './scenarios.ts'
 
 const BATCH_HONEST = 22
 const BATCH_FRAUD = 8
@@ -107,7 +107,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
               {props.items.map((item) => (
                 <tr key={item.account_id} className="border-b border-line align-top last:border-0">
                   <td className="px-4 py-3 font-mono">{item.account_id}</td>
-                  <td className="tabular px-4 py-3 text-right">{item.max_risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  <td className="tabular px-4 py-3 text-right">{riskText(item.max_risk)}</td>
                   <td className="px-4 py-3">
                     <ActionBadge action={item.last_action} />
                   </td>

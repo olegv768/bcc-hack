@@ -1,17 +1,74 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { Alert } from '../../service/src/alerts.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
 import { loadAlerts, loadFlagged, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { DutyPanel } from './DutyPanel.tsx'
 import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
-import { ACTION_LABELS, money } from './scenarios.ts'
+import { NetworkPage } from './network/NetworkPage.tsx'
+import { ACTION_LABELS, money, riskText } from './scenarios.ts'
 import { ScorePanel } from './ScorePanel.tsx'
 import { TransferScreen } from './TransferScreen.tsx'
 
 const CONTAINER = 'mx-auto max-w-[1180px] px-4 sm:px-6'
 
+const CONTAINER_WIDE = 'mx-auto max-w-[1640px] px-4 sm:px-6'
+
+// Две вкладки стенда: путь перевода и расследование сети (#network/<счёт, клиент или алерт>).
+const useHash = () =>
+  useSyncExternalStore(
+    (on) => {
+      window.addEventListener('hashchange', on)
+      return () => window.removeEventListener('hashchange', on)
+    },
+    () => location.hash,
+  )
+
 export function App() {
+  const hash = useHash()
+  const network = hash.startsWith('#network')
+  useEffect(() => {
+    document.title = network ? 'Network Investigation — расследование сети' : 'Стенд: оценка получателя перевода'
+  }, [network])
+
+  if (network) {
+    const ref = decodeURIComponent(hash.slice('#network/'.length))
+    return (
+      <>
+        <header className="bg-navy text-white">
+          <div className={CONTAINER_WIDE + ' pt-4 pb-5'}>
+            <Tabs network />
+            <h1 className="mt-5 font-display text-[26px] leading-tight font-semibold sm:text-[32px]">Network Investigation</h1>
+            <p className="mt-1.5 max-w-[80ch] text-[15px] text-white/75">
+              Не отдельный перевод, а вся сеть вокруг него: кто ещё переводил на этот счёт, куда ушли деньги, с каких устройств входили. Модуль только показывает связи и объясняет их — решает сотрудник.
+            </p>
+          </div>
+        </header>
+        <main className="min-h-[70vh] bg-field">
+          {/* key: переход по другой ссылке #network/… начинает новое расследование */}
+          <NetworkPage key={ref} initial={ref || null} />
+        </main>
+      </>
+    )
+  }
+  return <TransferStand />
+}
+
+function Tabs(props: { network?: boolean }) {
+  const tab = 'rounded-full px-4 py-2 text-[14px] font-semibold'
+  return (
+    <nav className="flex flex-wrap gap-1" aria-label="Разделы стенда">
+      <a href="#" aria-current={!props.network ? 'page' : undefined} className={tab + (!props.network ? ' bg-white text-navy' : ' text-white/75 hover:text-white')}>
+        Перевод и оценка
+      </a>
+      <a href="#network" aria-current={props.network ? 'page' : undefined} className={tab + (props.network ? ' bg-white text-navy' : ' text-white/75 hover:text-white')}>
+        Network Investigation
+      </a>
+    </nav>
+  )
+}
+
+function TransferStand() {
   const [request, setRequest] = useState<ScoreRequest | null>(null)
   const [response, setResponse] = useState<ScoreResponse | null>(null)
   const [flagged, setFlagged] = useState<FlaggedAccount[] | null>(null)
@@ -39,8 +96,9 @@ export function App() {
   return (
     <>
       <header className="bg-navy text-white">
-        <div className="mx-auto max-w-[1180px] px-4 pt-10 pb-10 sm:px-6 sm:pt-14">
-          <h1 className="max-w-[18ch] font-display text-[30px] leading-[1.12] font-semibold sm:text-[46px]">
+        <div className="mx-auto max-w-[1180px] px-4 pt-4 pb-10 sm:px-6">
+          <Tabs />
+          <h1 className="mt-8 max-w-[18ch] font-display text-[30px] leading-[1.12] font-semibold sm:text-[46px]">
             Перевод мошеннику останавливается здесь
           </h1>
           <p className="mt-4 max-w-[60ch] text-[17px] text-white/75">
@@ -136,7 +194,7 @@ function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | n
         {response ? (
           <>
             {ACTION_LABELS[response.action]}
-            <span className="block text-white/70">риск {response.risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="block text-white/70">риск {riskText(response.risk)}</span>
           </>
         ) : (
           'Отвечает риском и рекомендацией'

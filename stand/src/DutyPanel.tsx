@@ -2,7 +2,7 @@ import { useState } from 'react'
 import type { Alert, AlertSignals } from '../../service/src/alerts.ts'
 import { updateAlert } from './api.ts'
 import { ActionBadge } from './ScorePanel.tsx'
-import { clientContacts, money } from './scenarios.ts'
+import { clientContacts, money, riskText } from './scenarios.ts'
 
 const STATUS_LABEL = { new: 'Новый', in_progress: 'В работе', closed: 'Закрыт' }
 const RESOLUTION_LABEL = { fraud: 'мошенничество подтверждено', legit: 'ложное срабатывание' }
@@ -41,14 +41,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
   return (
     <div className="overflow-hidden rounded-[20px] border border-line bg-white shadow-[0_30px_60px_-45px_rgb(11_22_56/0.6)]">
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-line px-5 py-3.5">
-        <div className="flex items-center gap-3">
-          <span className="flex gap-1.5" aria-hidden="true">
-            <span className="size-2.5 rounded-full bg-line" />
-            <span className="size-2.5 rounded-full bg-line" />
-            <span className="size-2.5 rounded-full bg-line" />
-          </span>
-          <span className="text-[15px] font-semibold">Очередь инцидентов</span>
-        </div>
+        <span className="text-[15px] font-semibold">Очередь инцидентов</span>
         <div className="flex flex-wrap gap-2 text-[13px] font-semibold">
           <span className="tabular rounded-full bg-field px-3 py-1">В очереди: {open.length}</span>
           <span className={'tabular rounded-full px-3 py-1 ' + (urgent ? 'bg-hold text-white' : 'bg-field')}>Высокий приоритет: {urgent}</span>
@@ -113,7 +106,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
               </div>
               <div className="text-[15px]">
                 <ActionBadge action={selected.action} /> риск получателя{' '}
-                <b className="tabular">{selected.risk.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</b>
+                <b className="tabular">{riskText(selected.risk)}</b>
               </div>
             </div>
 
@@ -174,6 +167,10 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                   Вернуть в очередь
                 </button>
               )}
+              {/* не отдельный перевод, а вся сеть вокруг счёта получателя */}
+              <a href={'#network/' + encodeURIComponent(selected.alert_id)} className={button + ' inline-flex items-center bg-accent text-white sm:ml-auto'}>
+                Расследовать сеть
+              </a>
             </div>
             {actionError && <p className="mt-3 rounded-[14px] bg-hold-bg px-4 py-3 text-hold-ink">{actionError}</p>}
           </article>

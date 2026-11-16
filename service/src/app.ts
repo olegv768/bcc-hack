@@ -1,10 +1,14 @@
-// HTTP-интерфейс сервиса: POST /score, очередь алертов GET /alerts, выгрузка GET /flagged и GET /flagged.csv.
+// HTTP-интерфейс сервиса: POST /score, очередь алертов GET /alerts, выгрузка GET /flagged и GET /flagged.csv,
+// расследование сети /graph/* (graph/routes.ts).
 
 import express, { type NextFunction, type Request, type Response } from 'express'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createAlertQueue, NO_SIGNALS, type Alert } from './alerts.ts'
 import { FEATURE_KEYS } from './features.ts'
+import { createDemoGraphSource } from './graph/demo-source.ts'
+import { graphRoutes } from './graph/routes.ts'
+import type { BankGraphSource } from './graph/types.ts'
 import { decide, riskLevel, type Model } from './model.ts'
 import { createStore, toCsv } from './store.ts'
 import { clientMessage, reasonText } from './texts.ts'
@@ -84,10 +88,13 @@ export function createApp(options: {
   // Теневой режим для пилота: сервис всё считает и записывает, но отвечает «пропустить» и никого не беспокоит.
   // Настоящая рекомендация — в поле recommended_action и в очереди алертов, для сравнения с подтверждёнными случаями.
   shadow?: boolean
+  // данные банка для расследования сети; без них — демонстрационный набор поверх очереди алертов
+  graph?: BankGraphSource
 }) {
   const { model } = options
   const store = createStore(options.dataFile)
   const alerts = createAlertQueue(options.dataFile.replace(/\.json$/, '') + '-alerts.json')
+  const graph = options.graph ?? createDemoGraphSource({ alerts: () => alerts.list({}) })
 
   // Отправка не задерживает ответ на перевод: если система банка недоступна, алерт остаётся в очереди GET /alerts.
   const notify = (alert: Alert) => {
@@ -230,6 +237,8 @@ export function createApp(options: {
     }
     res.json(alert)
   })
+
+  app.use(graphRoutes(graph))
 
   // Только для стенда: очистить помеченные счета и очередь алертов перед показом.
   if (options.demo) {

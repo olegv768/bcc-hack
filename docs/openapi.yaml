@@ -8,6 +8,9 @@ info:
     Каждый такой перевод становится алертом в очереди антифрод-аналитика (`GET /alerts`), а счёт
     получателя попадает в выгрузку `GET /flagged` (JSON) и `GET /flagged.csv` (файл).
 
+    Расследование сети (`/graph/*`) строит граф связей вокруг подозрительного счёта по данным,
+    которые у банка уже есть, и объясняет каждую найденную связь.
+
     Сервис считает оценку локально и не обращается к внешним системам.
 servers:
   - url: http://127.0.0.1:8787
@@ -220,6 +223,147 @@ paths:
           $ref: '#/components/responses/InvalidRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /graph/cases:
+    get:
+      summary: Что передано на расследование сети
+      description: |
+        Сигналы основного антифрода банка и открытые алерты сервиса оценки, по счёту которых есть
+        данные для графа. Высокий приоритет сверху.
+      operationId: graphCases
+      responses:
+        '200':
+          description: Список сигналов
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count, items]
+                properties:
+                  count:
+                    type: integer
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IncomingCase'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /graph/investigate:
+    post:
+      summary: Построить сеть связей вокруг счёта, клиента, перевода или алерта
+      description: |
+        Модуль собирает клиентов, счета, карты, устройства, IP-адреса и телефоны вокруг исходной
+        сущности на `depth` уровней (владелец счёта и его карта — та же сторона, уровень не тратят),
+        оценивает роль каждого счёта по прозрачным правилам и возвращает находки: транзитные счета,
+        сборщиков, общие идентификаторы, повторяющиеся схемы, центральные узлы, вероятно пострадавших,
+        путь до подтверждённых дел и денежные маршруты.
+
+        Модуль не объявляет клиента мошенником: у каждого вывода есть объяснение, источник данных и
+        уверенность (не выше 0,9; 0,95 — только у решений банка по делам). Решает сотрудник.
+      operationId: investigate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvestigateRequest'
+            example:
+              alert_id: AF-77105
+              depth: 2
+              links: [transfer, device, phone, ip, card]
+      responses:
+        '200':
+          description: Граф и находки
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Investigation'
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: В данных банка нет такого счёта, клиента, перевода или алерта
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /graph/entities/{id}:
+    get:
+      summary: Карточка узла графа
+      description: Роль с объяснением, отметки антифрода, финансовая активность за период, связи и история переводов (до 200 последних).
+      operationId: graphEntity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: min_amount
+          in: query
+          schema:
+            type: number
+        - name: links
+          in: query
+          description: Типы связей через запятую, по умолчанию все.
+          schema:
+            type: string
+            example: transfer,device,phone
+      responses:
+        '200':
+          description: Карточка
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Сущность не найдена
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /graph/search:
+    get:
+      summary: Поиск по имени, псевдониму счёта, устройству или номеру перевода
+      operationId: graphSearch
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: До 20 совпадений и перевод, если q — его номер
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        type:
+                          type: string
+                        label:
+                          type: string
+                  transfer:
+                    type: object
+                    nullable: true
   /health:
     get:
       summary: Проверка, что сервис работает
@@ -545,6 +689,201 @@ components:
             type: number
             nullable: true
         model_version:
+          type: string
+    IncomingCase:
+      type: object
+      properties:
+        ref:
+          type: string
+          description: Номер алерта (al_…) или сигнала основного антифрода (AF-…)
+        source:
+          type: string
+          enum: [alert_queue, antifraud_engine]
+        entity_id:
+          type: string
+        transfer_id:
+          type: string
+          nullable: true
+        amount:
+          type: number
+          nullable: true
+        at:
+          type: string
+          format: date-time
+        priority:
+          type: string
+          enum: [high, medium]
+        summary:
+          type: string
+    InvestigateRequest:
+      type: object
+      description: Нужен один из entity_id, transfer_id, alert_id.
+      properties:
+        entity_id:
+          type: string
+          description: Счёт, клиент, карта, устройство, IP-адрес или телефон
+        transfer_id:
+          type: string
+          description: Перевод; центр графа — счёт получателя, маршрут перевода показывается первым
+        alert_id:
+          type: string
+          description: Алерт очереди сервиса или сигнал основного антифрода
+        depth:
+          type: integer
+          minimum: 1
+          maximum: 4
+          default: 2
+        links:
+          type: array
+          description: Какие связи учитывать. Владение счётом учитывается всегда.
+          items:
+            type: string
+            enum: [transfer, device, ip, phone, card]
+        expand:
+          type: array
+          description: Узлы, раскрытые сотрудником ещё на уровень
+          items:
+            type: string
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        min_amount:
+          type: number
+          description: Учитывать только переводы от этой суммы
+    Confidence:
+      type: object
+      properties:
+        value:
+          type: number
+          minimum: 0
+          maximum: 1
+        level:
+          type: string
+          enum: [low, medium, high]
+    Assessment:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [confirmed_fraud, possible_collector, possible_dropper, possible_victim, busy_legit, regular]
+        label:
+          type: string
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        evidence:
+          type: array
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              source:
+                type: string
+                description: Откуда взяты данные — платежи, журнал устройств, решения по делам, алерты антифрода
+        caveat:
+          type: string
+          nullable: true
+    Finding:
+      type: object
+      properties:
+        id:
+          type: string
+        kind:
+          type: string
+          enum: [confirmed_link, collector, repeated_pattern, transit, shared_identifier, victims, central_node, not_suspicious]
+        title:
+          type: string
+        explanation:
+          type: string
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        sources:
+          type: array
+          items:
+            type: string
+        node_ids:
+          type: array
+          items:
+            type: string
+        edge_ids:
+          type: array
+          items:
+            type: string
+    Investigation:
+      type: object
+      properties:
+        root:
+          type: string
+        generated_at:
+          type: string
+          format: date-time
+        nodes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [client, account, card, device, ip, phone]
+              label:
+                type: string
+              level:
+                type: integer
+              external:
+                type: string
+                nullable: true
+                enum: [other_bank, exchange, cash]
+              assessment:
+                allOf:
+                  - $ref: '#/components/schemas/Assessment'
+                nullable: true
+              centrality:
+                type: number
+                description: Посредничество внутри построенного графа, 0–1
+              capped:
+                type: boolean
+                description: Слишком много связей (общий Wi-Fi, крупный продавец) — узел не раскрывается
+        edges:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              type:
+                type: string
+                enum: [transfer, owns, card, device, ip, phone]
+              source:
+                type: string
+              target:
+                type: string
+              total:
+                type: number
+              transfers:
+                type: array
+                items:
+                  type: object
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        fraud_paths:
+          type: array
+          items:
+            type: object
+        routes:
+          type: array
+          description: Денежные маршруты — каждый следующий перевод в течение суток после предыдущего
+          items:
+            type: object
+        truncated:
+          type: boolean
+        disclaimer:
           type: string
     Error:
       type: object
