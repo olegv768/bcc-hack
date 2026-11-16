@@ -15,6 +15,9 @@ import type { Lang } from './texts.ts'
 
 export type IncomingAction = 'none' | 'notify' | 'hold_credit'
 
+// метка алертов проверки поступления: по ней панель и граф отличают их от алертов оценки перевода
+export const INCOMING_VERSION = 'incoming-rules-1'
+
 const IncomingRequest = z.object({
   transfer_id: z.string().min(1).max(100).optional(),
   lang: z.enum(['ru', 'kk', 'en']).default('ru'),
@@ -127,10 +130,10 @@ export function incomingRoutes(alerts: ReturnType<typeof createAlertQueue>) {
         account_id: r.recipient.account_id,
         amount: r.amount,
         action: action === 'hold_credit' ? 'hold' : 'warn',
-        risk: flagged ? 0.95 : 0.6,
+        risk: 0, // оценку счёта здесь не считали: решение по правилам, а не по модели
         triggers: reasons.map(({ code, text }) => ({ code, text })),
         signals: { on_call: r.sender.on_call, remote_access: null, first_transfer: r.sender.first_transfer_to_recipient, purpose: r.sender.payment_purpose },
-        model_version: 'incoming-rules-1',
+        model_version: INCOMING_VERSION,
       })
       alertId = alert.alert_id
     }

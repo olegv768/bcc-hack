@@ -53,6 +53,18 @@ describe('отправитель: POST /score', () => {
     const alerts = await (await fetch(url + '/alerts')).json()
     expect(alerts.items.find((a: { alert_id: string }) => a.alert_id === body.alert_id).signals.purpose).toBe('goods')
   })
+
+  test('честный счёт продавца не попадает в выгрузку помеченных счетов', async () => {
+    const flagged = await (await fetch(url + '/flagged')).json()
+    expect(flagged.items.map((a: { account_id: string }) => a.account_id)).not.toContain('tok_trader')
+  })
+
+  test('алерт проверки поступления не показывает выдуманный риск', async () => {
+    const body = await post('/incoming', { amount: 1000, recipient: { account_id: 'tok_r', p2p_trader_profile: true }, sender: { bank: 'same', payment_purpose: 'goods' } })
+    const alert = (await (await fetch(url + '/alerts')).json()).items.find((a: { alert_id: string }) => a.alert_id === body.alert_id)
+    expect(alert.risk).toBe(0)
+    expect(alert.model_version).toMatch(/^incoming/)
+  })
 })
 
 describe('получатель: POST /incoming', () => {

@@ -67,7 +67,7 @@ export function graphRoutes(source: BankGraphSource) {
     let root = r.entity_id
     let transferId = r.transfer_id
     if (!root && r.alert_id) {
-      const incoming = source.incoming().find((c) => c.ref === r.alert_id)
+      const incoming = source.findCase(r.alert_id)
       root = incoming?.entity_id
       transferId ??= incoming?.transfer_id ?? undefined
     }

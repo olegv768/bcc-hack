@@ -279,6 +279,7 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
         const note =
           kind === 'confirmed_fraud' ? 'Аналитик подтвердил мошенничество по алерту' :
           kind === 'cleared' ? 'Аналитик закрыл алерт как ложное срабатывание' :
+          a.model_version.startsWith('incoming') ? `Проверка поступления: ${a.triggers[0]?.text ?? 'получатель предупреждён'}` :
           `Сервис оценки: перевод ${a.action === 'hold' ? 'придержан' : 'с предупреждением'}, риск ${a.risk.toFixed(2)}`
         out.push({ kind, ref: a.alert_id, at: a.updated_at, note })
       }
@@ -307,9 +308,18 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
       return [...ids]
     },
     incoming() {
-      const fromQueue: IncomingCase[] = live()
-        .filter((a) => a.status !== 'closed' && entities.has(a.account_id))
+      return [...queueCases().filter((c) => c.open).map(({ open: _open, ...c }) => c), ...engineCases]
+    },
+    findCase(ref) {
+      return [...queueCases(), ...engineCases].find((c) => c.ref === ref)
+    },
+  }
+
+  function queueCases(): (IncomingCase & { open?: boolean })[] {
+    return live()
+        .filter((a) => entities.has(a.account_id))
         .map((a) => ({
+          open: a.status !== 'closed',
           ref: a.alert_id,
           source: 'alert_queue',
           entity_id: a.account_id,
@@ -317,9 +327,10 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
           amount: a.amount,
           at: a.created_at,
           priority: a.priority,
-          summary: `Сервис оценки: ${a.action === 'hold' ? 'перевод придержан' : 'клиент предупреждён'}. ${a.triggers[0]?.text ?? ''}`.trim(),
+          summary: (a.model_version.startsWith('incoming')
+            ? `Проверка поступления: ${a.action === 'hold' ? 'зачисление придержано' : 'получатель предупреждён'}. ${a.triggers[0]?.text ?? ''}`
+            : `Сервис оценки: ${a.action === 'hold' ? 'перевод придержан' : 'клиент предупреждён'}. ${a.triggers[0]?.text ?? ''}`
+          ).trim(),
         }))
-      return [...fromQueue, ...engineCases]
-    },
   }
 }

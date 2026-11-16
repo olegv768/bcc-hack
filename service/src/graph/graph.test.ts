@@ -158,6 +158,16 @@ describe('HTTP: /graph', () => {
     const details = await (await fetch(url + '/graph/entities/tok_e2a881')).json()
     expect(details.assessment.role).toBe('confirmed_fraud')
     expect(details.history.length).toBeGreaterThan(0)
+
+    // закрытый алерт уходит из списка сигналов, но расследование по его номеру продолжается —
+    // в том числе при смене фильтров (раньше здесь был ответ 404)
+    const afterClose = await (await fetch(url + '/graph/cases')).json()
+    expect(afterClose.items.map((c: { ref: string }) => c.ref)).not.toContain(alert.alert_id)
+    for (const links of [['transfer'], ['device', 'phone'], []]) {
+      const response = await post('/graph/investigate', { alert_id: alert.alert_id, links })
+      expect(response.status).toBe(200)
+      expect((await response.json()).root).toBe('tok_e2a881')
+    }
   })
 
   test('поиск по имени и номеру перевода', async () => {

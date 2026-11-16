@@ -74,6 +74,8 @@ export interface BankGraphSource {
   confirmedFraud(): string[]
   // для очереди «что прислал антифрод»
   incoming(): IncomingCase[]
+  // сигнал или алерт по номеру — в том числе уже закрытый: расследование по нему продолжается
+  findCase(ref: string): IncomingCase | undefined
 }
 
 export type IncomingCase = {

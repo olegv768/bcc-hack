@@ -105,8 +105,18 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                 <div className="tabular font-display text-[34px] leading-tight font-semibold">{money(selected.amount)}</div>
               </div>
               <div className="text-[15px]">
-                <ActionBadge action={selected.action} /> риск получателя{' '}
-                <b className="tabular">{riskText(selected.risk)}</b>
+                {selected.model_version.startsWith('incoming') ? (
+                  <>
+                    <span className="rounded-full bg-[#e6ecff] px-2.5 py-0.5 text-[13px] font-semibold text-[#1d3fbf]">
+                      {selected.action === 'hold' ? 'Зачисление придержано' : 'Получатель предупреждён'}
+                    </span>{' '}
+                    проверка поступления на счёт клиента банка
+                  </>
+                ) : (
+                  <>
+                    <ActionBadge action={selected.action} /> риск получателя <b className="tabular">{riskText(selected.risk)}</b>
+                  </>
+                )}
               </div>
             </div>
 
@@ -168,7 +178,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                 </button>
               )}
               {/* не отдельный перевод, а вся сеть вокруг счёта получателя */}
-              <a href={'#network/' + encodeURIComponent(selected.alert_id)} className={button + ' inline-flex items-center bg-accent text-white sm:ml-auto'}>
+              <a href={'#network/' + encodeURIComponent(selected.account_id)} className={button + ' inline-flex items-center bg-accent text-white sm:ml-auto'}>
                 Расследовать сеть
               </a>
             </div>

@@ -38,7 +38,7 @@ export function Findings(props: {
         {findings.length === 0 ? (
           <p className="text-ink-2">Ни транзитных счетов, ни общих устройств, ни связи с подтверждёнными делами в построенном графе нет.</p>
         ) : (
-          <ul className="space-y-2.5">
+          <ul className="grid items-start gap-2.5 lg:grid-cols-2 xl:grid-cols-1">
             {findings.map((f) => (
               <li key={f.id}>
                 <button
@@ -52,7 +52,7 @@ export function Findings(props: {
                 >
                   <span className={'inline-block rounded-full px-2.5 py-0.5 text-[12px] font-semibold ' + (KIND_TONE[f.kind] ?? 'bg-field text-ink')}>{KIND[f.kind]}</span>
                   <span className="mt-1.5 block text-[15px] leading-snug font-semibold">{f.title}</span>
-                  <span className={'mt-1 block text-[14px] leading-snug text-ink-2 ' + (props.active === f.id ? '' : 'line-clamp-3')}>{f.explanation}</span>
+                  <span className={'mt-1 text-[14px] leading-snug text-ink-2 ' + (props.active === f.id ? 'block' : 'line-clamp-3')}>{f.explanation}</span>
                   <Confidence value={f.confidence.value} level={f.confidence.level} />
                   {props.active === f.id && <span className="mt-2 block text-[12px] text-muted">Источники: {f.sources.join('; ')}</span>}
                 </button>

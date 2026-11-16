@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Finding, MoneyRoute } from '../../../service/src/graph/types.ts'
 import { Findings } from './Findings.tsx'
 import { GraphCanvas, type Focus } from './GraphCanvas.tsx'
@@ -17,7 +17,7 @@ export function targetFromRef(ref: string): Target {
   return { entity_id: ref }
 }
 
-const targetKey = (t: Target | null) => (t ? (t.alert_id ?? t.transfer_id ?? t.entity_id ?? '') : '')
+const targetKey = (t: Target | null) => (t ? (t.alert_id ?? t.entity_id ?? t.transfer_id ?? '') : '')
 
 // Вкладка «Network Investigation»: сотрудник выбирает подозрительный счёт и видит всю сеть связей вокруг него.
 export function NetworkPage(props: { initial: string | null }) {
@@ -55,13 +55,21 @@ export function NetworkPage(props: { initial: string | null }) {
 
   const filters: Filters = useMemo(() => ({ links, min_amount: minAmount || undefined, ...period }), [links, minAmount, period])
 
+  // Алерт или перевод превращаются в счёт один раз. Дальше (фильтры, глубина, раскрытие) граф
+  // запрашиваем по этому счёту: алерт мог закрыться, а на хостинге другой экземпляр сервиса
+  // его вообще не знает — повторный поиск по номеру алерта отвечал бы «не найден».
+  const resolved = useRef<{ for: Target; root: string } | null>(null)
+
   useEffect(() => {
     if (!analyzed) return
     const controller = new AbortController()
     setLoading(true)
     setError('')
-    investigate(analyzed, depth, filters, expand, controller.signal)
+    const known = resolved.current?.for === analyzed ? resolved.current.root : null
+    const query: Target = known ? { entity_id: known, transfer_id: analyzed.transfer_id } : analyzed
+    investigate(query, depth, filters, expand, controller.signal)
       .then((data) => {
+        resolved.current = { for: analyzed, root: data.root }
         setResult(data)
         if (!period.from && !period.to) setBaseline(data)
         setLoading(false)
@@ -121,20 +129,22 @@ export function NetworkPage(props: { initial: string | null }) {
     return { scheme: role('possible_dropper') + role('possible_collector'), victims: role('possible_victim'), confirmed: role('confirmed_fraud') }
   }, [result])
 
+  // планшет: фильтры слева, граф справа, находки под ними; большой экран — три колонки.
+  // Боковые колонки прилипают к экрану и прокручиваются сами, чтобы граф и находки были видны вместе.
   return (
-    <div className="mx-auto grid max-w-[1640px] gap-5 px-4 py-6 sm:px-6 xl:grid-cols-[300px_minmax(0,1fr)_390px]">
+    <div className="mx-auto grid max-w-[1640px] gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_390px]">
       {/* --- что прислал антифрод, поиск, фильтры --- */}
-      <aside className="space-y-5 xl:max-h-[calc(100vh-120px)] xl:overflow-auto xl:pr-1">
+      <aside className="scroll-thin space-y-5 lg:sticky lg:top-4 lg:row-span-2 lg:max-h-[calc(100vh-32px)] lg:self-start lg:overflow-auto lg:pr-1 xl:row-span-1">
         <Card>
           <h2 className="text-[17px] font-bold">Сигналы антифрода</h2>
           <p className="mt-1 mb-3 text-[13px] text-ink-2">Счета и переводы, которые основной антифрод и сервис оценки передали на расследование.</p>
           {cases === null ? (
             <p className="text-[14px] text-muted">{casesError || 'Загружаем…'}</p>
           ) : (
-            <ul className="-mx-1 max-h-[300px] space-y-1 overflow-auto">
+            <ul className="scroll-thin -mx-1 max-h-[300px] space-y-1 overflow-auto">
               {cases.map((c) => {
-                const t: Target = { alert_id: c.ref }
-                const active = targetKey(target) === c.ref
+                const t: Target = { entity_id: c.entity_id, transfer_id: c.transfer_id ?? undefined }
+                const active = targetLabel === c.ref
                 return (
                   <li key={c.ref}>
                     <button
@@ -269,7 +279,15 @@ export function NetworkPage(props: { initial: string | null }) {
                 <b className="text-warn-ink">{counts.victims}</b> · подтверждённых дел: <b>{counts.confirmed}</b>
               </p>
             </div>
-            {error && <p className="mb-3 rounded-[14px] bg-hold-bg px-4 py-3 text-hold-ink">{error}</p>}
+            {error && (
+              <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-[14px] bg-hold-bg px-4 py-3 text-hold-ink">
+                <p className="min-w-0 flex-1">{error} На графе — последний построенный вариант.</p>
+                {/* повтор того же запроса: новый объект фильтров перезапускает загрузку */}
+                <button type="button" onClick={() => setLinks([...links])} className="min-h-9 cursor-pointer rounded-full bg-white px-4 text-[14px] font-semibold">
+                  Повторить
+                </button>
+              </div>
+            )}
             <GraphCanvas
               data={result}
               selected={selected}
@@ -300,7 +318,7 @@ export function NetworkPage(props: { initial: string | null }) {
       </section>
 
       {/* --- находки и карточка узла --- */}
-      <aside className="min-w-0 xl:max-h-[calc(100vh-120px)] xl:overflow-auto">
+      <aside className="scroll-thin min-w-0 lg:col-start-2 xl:sticky xl:top-4 xl:col-start-3 xl:row-start-1 xl:max-h-[calc(100vh-32px)] xl:self-start xl:overflow-auto">
         <div className="mb-4 grid grid-cols-2 gap-1 rounded-full bg-white p-1 shadow-[0_1px_3px_rgb(11_22_56/0.12)]" role="tablist">
           {(['findings', 'node'] as const).map((t) => (
             <button

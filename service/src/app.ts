@@ -170,6 +170,12 @@ export function createApp(options: {
       })
       alertId = alert.alert_id
       if (!options.shadow) notify(alert)
+    }
+    // В выгрузку помеченных счетов попадает счёт, к которому есть претензии. Если тревогу поднял только
+    // «треугольник», счёт продавца криптовалюты чист: пометка подтолкнула бы банк заблокировать честного человека.
+    const onlyTriangle =
+      result.triangle && result.risk < model.thresholds.warn && !reasons.some((r) => r.code === 'CONFIRMED_FRAUD' || r.code === 'REPEAT_TARGET')
+    if (result.action !== 'allow' && !repeated && !onlyTriangle) {
       store.add({
         account_id,
         risk: result.risk,
