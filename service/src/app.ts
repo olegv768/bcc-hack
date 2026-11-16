@@ -5,9 +5,10 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
 import { createAlertQueue, NO_SIGNALS, type Alert } from './alerts.ts'
-import { FEATURE_KEYS } from './features.ts'
+import { FEATURE_KEYS, PURPOSES } from './features.ts'
 import { createDemoGraphSource } from './graph/demo-source.ts'
 import { graphRoutes } from './graph/routes.ts'
+import { incomingRoutes } from './incoming.ts'
 import type { BankGraphSource } from './graph/types.ts'
 import { decide, riskLevel, type Model } from './model.ts'
 import { createStore, toCsv } from './store.ts'
@@ -27,6 +28,8 @@ const ScoreRequest = z.object({
     unrelated_senders_7d: feature(100000),
     fast_outflow_share_7d: feature(1),
     shared_device_accounts: feature(100000),
+    // банк видит, что получатель продаёт криптовалюту на P2P-площадках
+    p2p_trader_profile: z.boolean().nullable().default(null),
   }),
   context: z.object({
     amount: z.number().positive().max(1e12),
@@ -34,6 +37,7 @@ const ScoreRequest = z.object({
     remote_access_active: z.boolean().nullable().default(null),
     first_transfer_to_recipient: z.boolean().nullable().default(null),
     amount_to_typical_ratio: z.number().min(0).max(1e6).nullable().default(null),
+    payment_purpose: z.enum(PURPOSES).nullable().default(null),
   }),
 })
 
@@ -67,8 +71,13 @@ const AlertSnapshot = z.object({
   risk: z.number().min(0).max(1),
   triggers: z.array(z.object({ code: z.string().max(40), text: z.string().max(300) })).max(12),
   signals: z
-    .object({ on_call: z.boolean().nullable(), remote_access: z.boolean().nullable(), first_transfer: z.boolean().nullable() })
-    .default(NO_SIGNALS),
+    .object({
+      on_call: z.boolean().nullable(),
+      remote_access: z.boolean().nullable(),
+      first_transfer: z.boolean().nullable(),
+      purpose: z.enum(PURPOSES).nullable().default(null),
+    })
+    .default({ ...NO_SIGNALS, purpose: null }),
   model_version: z.string().max(60),
 })
 
@@ -134,9 +143,9 @@ export function createApp(options: {
       return
     }
     const { lang, context, recipient } = parsed.data
-    const { account_id, ...features } = recipient
+    const { account_id, p2p_trader_profile, ...features } = recipient
 
-    const result = decide(model, features, context, alerts.history(account_id, parsed.data.client_ref ?? null))
+    const result = decide(model, features, { ...context, recipient_p2p_trader: p2p_trader_profile }, alerts.history(account_id, parsed.data.client_ref ?? null))
     const reasons = result.reasons.map((r) => ({ code: r.code, text: reasonText(r, lang), contribution: r.contribution }))
 
     // Тот же перевод прислали ещё раз (повтор после сбоя связи): отвечаем, но второй алерт не создаём.
@@ -155,6 +164,7 @@ export function createApp(options: {
           on_call: context.sender_on_call,
           remote_access: context.remote_access_active,
           first_transfer: context.first_transfer_to_recipient,
+          purpose: context.payment_purpose,
         },
         model_version: model.version,
       })
@@ -183,7 +193,7 @@ export function createApp(options: {
       recommended_action: result.action,
       alert_id: alertId,
       reasons,
-      client_message: options.shadow ? null : clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true }, lang),
+      client_message: options.shadow ? null : clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true, triangle: result.triangle }, lang),
       // вклад каждого признака в оценку — чтобы аналитик видел, из чего она сложилась
       contributions: Object.fromEntries(FEATURE_KEYS.map((key) => [key, Math.round(result.contributions[key] * 100) / 100])),
       missing_features: result.missing,
@@ -238,6 +248,7 @@ export function createApp(options: {
     res.json(alert)
   })
 
+  app.use(incomingRoutes(alerts))
   app.use(graphRoutes(graph))
 
   // Только для стенда: очистить помеченные счета и очередь алертов перед показом.

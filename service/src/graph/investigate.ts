@@ -16,6 +16,9 @@ export const SOURCES = {
   phones: 'Справочник клиентов: номера телефонов',
   cases: 'Решения по делам (система ведения инцидентов банка)',
   engine: 'Основной антифрод банка: алерты',
+  purpose: 'Назначение платежа, указанное отправителем',
+  complaints: 'Обращения клиентов',
+  center: 'Антифрод-центр Национального банка',
   module: 'Расчёт модуля по данным выше',
 } as const
 
@@ -40,10 +43,11 @@ const ROLE_LABEL: Record<Role, string> = {
   possible_collector: 'Признаки сборщика: собирает деньги с транзитных счетов',
   possible_dropper: 'Признаки транзитного счёта (дропа)',
   possible_victim: 'Вероятно, пострадавший',
+  p2p_intermediary: 'Продаёт криптовалюту на P2P: его реквизиты, похоже, использовали в «треугольнике»',
   busy_legit: 'Много отправителей, признаков транзита нет',
   regular: 'Признаков схемы не найдено',
 }
-const ROLE_RANK: Record<Role, number> = { confirmed_fraud: 5, possible_collector: 4, possible_dropper: 3, possible_victim: 2, busy_legit: 1, regular: 0 }
+const ROLE_RANK: Record<Role, number> = { confirmed_fraud: 6, possible_collector: 5, possible_dropper: 4, p2p_intermediary: 3, possible_victim: 2, busy_legit: 1, regular: 0 }
 
 export const money = (value: number) => Math.round(value).toLocaleString('ru-RU') + ' ₸'
 const pct = (share: number) => Math.round(share * 100) + '%'
@@ -183,6 +187,24 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
   }
 
   const ownerOf = (accountId: string) => source.entity(accountId)?.attrs.owner
+
+  // Продавец криптовалюты на P2P, которому платили «за товар»: признак «треугольника».
+  // Нужны назначения платежей; без них банк такого продавца от сборщика не отличит.
+  function p2pProfile(accountId: string) {
+    return memo('p2p:' + accountId, () => {
+      const list = periodTransfers(accountId)
+      const incoming = list.filter((t) => t.to === accountId)
+      const cryptoBuyers = new Set(incoming.filter((t) => t.purpose === 'crypto_p2p').map((t) => t.from)).size
+      const outflow = list.filter((t) => t.from === accountId && t.status !== 'held')
+      const toExchange = outflow.filter((t) => source.entity(t.to)?.attrs.external === 'exchange').reduce((a, t) => a + t.amount, 0)
+      const out = outflow.reduce((a, t) => a + t.amount, 0)
+      const goodsSenders = [...new Set(incoming.filter((t) => t.purpose === 'goods' || t.purpose === 'services').map((t) => t.from))]
+      const age = stats(accountId).age_days ?? 0
+      if (age < 180 || goodsSenders.length === 0 || (cryptoBuyers < 3 && (!out || toExchange / out < 0.5))) return null
+      const complaints = goodsSenders.filter((a) => [...source.marks(a), ...source.marks(ownerOf(a) ?? '')].some((m) => m.kind === 'complaint'))
+      return { cryptoBuyers, goodsSenders, complaints }
+    })
+  }
   const accountsOf = (clientId: string) => source.links(clientId).filter((l) => l.type === 'owns' && l.from === clientId).map((l) => l.to)
   const isConfirmed = (id: string) => source.marks(id).some((m) => m.kind === 'confirmed_fraud')
 
@@ -216,6 +238,24 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
       }
 
       const s = stats(accountId)
+      const p2p = p2pProfile(accountId)
+      if (p2p) {
+        const evidence: Evidence[] = [
+          { text: `${plural(p2p.cryptoBuyers, 'человек платил', 'человека платили', 'человек платили')} с назначением «покупка криптовалюты», деньги уходят на биржу на свой счёт — так работает продавец USDT на P2P-площадке.`, source: SOURCES.purpose },
+          { text: `${names(p2p.goodsSenders.map(name))} указали назначение «оплата товара или услуги» — за товар, которого этот человек не продаёт.`, source: SOURCES.purpose },
+        ]
+        if (p2p.complaints.length) evidence.push({ text: `Из них жалуются, что товар не получили: ${names(p2p.complaints.map(name))}`, source: SOURCES.complaints })
+        const center = marks.filter((m) => m.kind === 'center')
+        if (center.length) evidence.push({ text: `Антифрод-центр передал ${plural(center.length, 'отметку', 'отметки', 'отметок')} о мошенничестве по входящим переводам (${center.map((m) => m.ref).join(', ')}).`, source: SOURCES.center })
+        evidence.push({ text: `Счёт открыт ${Math.round((s.age_days ?? 0) / 365)} г. назад.`, source: SOURCES.accounts })
+        return {
+          role: 'p2p_intermediary',
+          label: ROLE_LABEL.p2p_intermediary,
+          confidence: confidence(0.5 + p2p.complaints.length * 0.12 + (center.length ? 0.1 : 0)),
+          evidence,
+          caveat: 'Скорее всего, владелец счёта сам пострадал: он отдал криптовалюту мошеннику за чужие деньги. Не блокируйте счёт — запросите у него ордера P2P-площадки за даты этих платежей: в них ник и реквизиты настоящего покупателя.',
+        }
+      }
       const evidence: Evidence[] = []
       let score = 0
       const transit = isTransit(accountId)
@@ -309,17 +349,28 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
 
       // пострадавший: старый счёт, перевод (или попытка) на счёт с признаками транзита
       const sent = source.transfers(accountId).filter((t) => t.from === accountId && inPeriod(t))
-      const suspiciousTargets = sent.filter((t) => t.to !== accountId && (isTransit(t.to) || isConfirmed(t.to)))
+      const triangleTarget = (t: Transfer) => (t.purpose === 'goods' || t.purpose === 'services') && !!p2pProfile(t.to)
+      const suspiciousTargets = sent.filter((t) => t.to !== accountId && (isTransit(t.to) || isConfirmed(t.to) || triangleTarget(t)))
       if (suspiciousTargets.length && !transit && (s.age_days ?? 0) >= 180) {
         const victim: Evidence[] = []
         let v = 0.45
         for (const t of suspiciousTargets.slice(0, 3)) {
           const before = sent.filter((x) => x.to === t.to && x.at < t.at).length
           const status = t.status === 'held' ? ' (перевод придержан)' : t.status === 'warned' ? ' (с предупреждением)' : ''
-          victim.push({ text: names([`${before ? 'Перевёл' : 'Впервые перевёл'} ${money(t.amount)} на счёт с признаками транзита: ${name(t.to)}${status}`]), source: SOURCES.payments })
+          victim.push({
+            text: triangleTarget(t)
+              ? names([`Оплатил «товар» ${money(t.amount)} на счёт продавца криптовалюты: ${name(t.to)}${status}`])
+              : names([`${before ? 'Перевёл' : 'Впервые перевёл'} ${money(t.amount)} на счёт с признаками транзита: ${name(t.to)}${status}`]),
+            source: triangleTarget(t) ? SOURCES.purpose : SOURCES.payments,
+          })
         }
         victim.push({ text: `Счёт открыт ${Math.round((s.age_days ?? 0) / 365)} г. назад, деньги на нём не задерживаются транзитом.`, source: SOURCES.accounts })
         v += 0.1
+        const complaint = marks.find((m) => m.kind === 'complaint')
+        if (complaint) {
+          v += 0.15
+          victim.push({ text: `${complaint.ref}: ${complaint.note}.`, source: SOURCES.complaints })
+        }
         const pressure = marks.filter((m) => m.sender_on_call || m.remote_access)
         if (pressure.length) {
           v += 0.2
@@ -529,7 +580,7 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
   }
 
   const isSameParty = (a: string, b: string) => ownerOf(a) === b || ownerOf(b) === a
-  const isInnocent = (id: string) => ['regular', 'busy_legit', 'possible_victim'].includes(assess(id)?.role ?? '')
+  const isInnocent = (id: string) => ['regular', 'busy_legit', 'possible_victim', 'p2p_intermediary'].includes(assess(id)?.role ?? '')
 
   function hopText(fromId: string, toId: string, step: Step): string {
     if (step.type === 'owns') {
@@ -677,6 +728,24 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
       })
     }
 
+    for (const n of nodes.filter((x) => x.type === 'account' && x.assessment?.role === 'p2p_intermediary')) {
+      const p2p = p2pProfile(n.id)!
+      const payers = p2p.goodsSenders
+      out.push({
+        id: 'triangle:' + n.id,
+        kind: 'triangle',
+        title: `Похоже на «треугольник»: реквизитами ${name(n.id)} расплатились за чужой товар`,
+        explanation:
+          `${names(payers.map(name))} оплатили «товар» на счёт человека, который продаёт криптовалюту на P2P${p2p.complaints.length ? `; ${plural(p2p.complaints.length, 'пожаловался', 'пожаловались', 'пожаловались')}, что товар не пришёл` : ''}. ` +
+          'Мошенника в переводах нет: он купил криптовалюту у продавца, а заплатить за неё заставил покупателей своего объявления. ' +
+          'Что делать: не блокировать счёт продавца; запросить у него ордера P2P-площадки за даты этих платежей — ник и реквизиты покупателя ведут к мошеннику; вернуть деньги пострадавшим через Антифрод-центр Национального банка.',
+        confidence: n.assessment!.confidence,
+        sources: [SOURCES.purpose, SOURCES.complaints, SOURCES.center, SOURCES.payments],
+        node_ids: [n.id, ...(ownerOf(n.id) ? [ownerOf(n.id)!] : []), ...payers, ...payers.map((p) => ownerOf(p) ?? p)],
+        edge_ids: payers.map((p) => `transfer:${p}:${n.id}`),
+      })
+    }
+
     for (const n of nodes.filter((x) => x.type === 'account' && (x.assessment?.role === 'possible_collector' || x.assessment?.role === 'possible_dropper'))) {
       const a = n.assessment!
       out.push({
@@ -753,7 +822,7 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
         id: 'victims',
         kind: 'victims',
         title: `Вероятно, пострадавшие: ${victims.length}`,
-        explanation: `${names(victims.map((v) => v.label))} Старые счета, обычная история операций, крупный перевод на счёт с признаками транзита. Их не стоит смешивать с участниками схемы — им нужен звонок банка.`,
+        explanation: `${names(victims.map((v) => v.label))} Старые счета, обычная история операций, крупный перевод на счёт с признаками транзита или «за товар» продавцу криптовалюты. Их не стоит смешивать с участниками схемы — им нужен звонок банка.`,
         confidence: confidence(victims.reduce((s, v) => s + v.assessment!.confidence.value, 0) / victims.length),
         sources: [SOURCES.payments, SOURCES.accounts, SOURCES.engine],
         node_ids: victims.map((v) => v.id),
@@ -764,7 +833,7 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
     const central = nodes
       .filter((n) => (n.type === 'account' || n.type === 'client') && !n.external && n.centrality >= 0.25 && n.id !== root)
       // люди без признаков схемы оказываются «мостами» из-за обычных покупок и семьи — центром сети их не называем
-      .filter((n) => !['possible_victim', 'busy_legit', 'regular'].includes(n.assessment?.role ?? 'regular'))
+      .filter((n) => !['possible_victim', 'busy_legit', 'regular', 'p2p_intermediary'].includes(n.assessment?.role ?? 'regular'))
       .sort((a, b) => b.centrality - a.centrality)
       // счёт и его владелец — одна сторона: называем один раз
       .filter((n, i, list) => list.findIndex((x) => name(x.id) === name(n.id)) === i)
@@ -795,8 +864,10 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
       })
     }
 
-    const order = ['confirmed_link', 'collector', 'repeated_pattern', 'transit', 'shared_identifier', 'victims', 'central_node', 'not_suspicious']
-    return out.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind) || b.confidence.value - a.confidence.value)
+    const order = ['confirmed_link', 'triangle', 'collector', 'repeated_pattern', 'transit', 'shared_identifier', 'victims', 'central_node', 'not_suspicious']
+    // слабая связь с делом (через людей без признаков схемы) — в конец, к прочим заметкам
+    const rank = (f: Finding) => (f.kind === 'confirmed_link' && f.confidence.level === 'low' ? order.length : order.indexOf(f.kind))
+    return out.sort((a, b) => rank(a) - rank(b) || b.confidence.value - a.confidence.value)
   }
 
   const stepSource = (edgeId: string) => {

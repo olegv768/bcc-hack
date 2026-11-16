@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { Alert } from '../../service/src/alerts.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
-import { loadAlerts, loadFlagged, type ScoreRequest, type ScoreResponse } from './api.ts'
+import { loadAlerts, loadFlagged, type IncomingRequest, type IncomingResponse, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { DutyPanel } from './DutyPanel.tsx'
 import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
@@ -71,6 +71,7 @@ function Tabs(props: { network?: boolean }) {
 function TransferStand() {
   const [request, setRequest] = useState<ScoreRequest | null>(null)
   const [response, setResponse] = useState<ScoreResponse | null>(null)
+  const [credit, setCredit] = useState<{ request: IncomingRequest; response: IncomingResponse } | null>(null)
   const [flagged, setFlagged] = useState<FlaggedAccount[] | null>(null)
   const [flaggedError, setFlaggedError] = useState('')
   const [alerts, setAlerts] = useState<Alert[] | null>(null)
@@ -117,11 +118,15 @@ function TransferStand() {
                 setResponse(res)
                 refreshFlagged()
               }}
+              onIncoming={(req, res) => {
+                setCredit(req && res ? { request: req, response: res } : null)
+                if (res) refreshFlagged()
+              }}
             />
           </Step>
 
           <Step number={2} title="Сервис оценки получателя" note="Решение и причины. Всё считается внутри банка, данные никуда не уходят.">
-            <ScorePanel request={request} response={response} />
+            <ScorePanel request={request} response={response} credit={credit} />
           </Step>
         </div>
 

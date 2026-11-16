@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { callSignal, remoteAccessSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
-import { score, type ScoreRequest, type ScoreResponse } from './api.ts'
-import { CLIENT_REF, money, SCENARIOS, TYPICAL_TRANSFER } from './scenarios.ts'
+import { incoming, score, type IncomingRequest, type IncomingResponse, type ScoreRequest, type ScoreResponse } from './api.ts'
+import { CLIENT_REF, money, P2P_TRADER_REF, PURPOSE_LABELS, SCENARIOS, SENDER_DISPLAY_NAME, TYPICAL_TRANSFER } from './scenarios.ts'
+import type { Purpose } from '../../service/src/features.ts'
 import { NumberInput } from './NumberInput.tsx'
 
 type Outcome = 'sent' | 'cancelled' | 'held'
@@ -23,9 +24,13 @@ const AVATAR = [
 
 // Демонстрационный экран перевода: каждое нажатие отправляет настоящий запрос в сервис оценки.
 // В банке вместо него — его собственное приложение с тем же клиентским модулем.
-export function TransferScreen(props: { onScored: (request: ScoreRequest, response: ScoreResponse) => void }) {
+export function TransferScreen(props: {
+  onScored: (request: ScoreRequest, response: ScoreResponse) => void
+  onIncoming: (request: IncomingRequest | null, response: IncomingResponse | null) => void
+}) {
   const phone = useRef<HTMLDivElement>(null)
   const [scenarioId, setScenarioId] = useState('fresh')
+  const [purpose, setPurpose] = useState<Purpose>('other')
   const [amount, setAmount] = useState(450000)
   const [onCall, setOnCall] = useState(true)
   const [remoteAccess, setRemoteAccess] = useState(false)
@@ -48,7 +53,7 @@ export function TransferScreen(props: { onScored: (request: ScoreRequest, respon
       transfer_id: 'tr_' + Date.now().toString(36),
       lang,
       client_ref: CLIENT_REF,
-      recipient: { account_id: scenario.account_id, ...scenario.features },
+      recipient: { account_id: scenario.account_id, p2p_trader_profile: scenario.p2p_trader ?? false, ...scenario.features },
       context: {
         amount,
         // на стенде сигналы задают переключатели; в приложении их отдаёт нативная часть модуля
@@ -56,17 +61,43 @@ export function TransferScreen(props: { onScored: (request: ScoreRequest, respon
         remote_access_active: remoteAccessSignal(() => remoteAccess),
         first_transfer_to_recipient: scenario.first_transfer,
         amount_to_typical_ratio: Math.round((amount / TYPICAL_TRANSFER) * 10) / 10,
+        payment_purpose: purpose,
       },
+    }
+
+    // Деньги дошли до получателя — его банк (BCC) проверяет поступление. На стенде это делаем
+    // только для продавца криптовалюты: у остальных получателей проверка ничего не покажет.
+    const credit = async () => {
+      if (!scenario.p2p_trader) return
+      const req: IncomingRequest = {
+        transfer_id: request.transfer_id,
+        lang,
+        amount,
+        recipient: { account_id: scenario.account_id, client_ref: P2P_TRADER_REF, p2p_trader_profile: true },
+        sender: {
+          bank: 'same',
+          display_name: SENDER_DISPLAY_NAME,
+          first_transfer_to_recipient: scenario.first_transfer,
+          payment_purpose: purpose,
+          on_call: request.context.sender_on_call,
+        },
+        antifraud_center: null,
+      }
+      props.onIncoming(req, await incoming(req))
     }
 
     try {
       const response = await score(request)
       props.onScored(request, response)
+      props.onIncoming(null, null)
       if (response.action === 'allow' || !response.client_message) {
         setOutcome('sent')
+        await credit()
       } else {
         const choice = await showWarning(phone.current!, { action: response.action, message: response.client_message, lang })
-        setOutcome(choice === 'proceed' ? 'sent' : response.action === 'hold' ? 'held' : 'cancelled')
+        const result = choice === 'proceed' ? 'sent' : response.action === 'hold' ? 'held' : 'cancelled'
+        setOutcome(result)
+        if (result === 'sent') await credit()
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось выполнить перевод')
@@ -129,7 +160,17 @@ export function TransferScreen(props: { onScored: (request: ScoreRequest, respon
                       (selected ? 'bg-[#eef2ff] ring-accent' : 'ring-transparent hover:bg-field')
                     }
                   >
-                    <input type="radio" name="recipient" value={s.id} checked={selected} onChange={() => setScenarioId(s.id)} className="sr-only" />
+                    <input
+                      type="radio"
+                      name="recipient"
+                      value={s.id}
+                      checked={selected}
+                      onChange={() => {
+                        setScenarioId(s.id)
+                        setPurpose(s.purpose)
+                      }}
+                      className="sr-only"
+                    />
                     <span
                       className={'grid size-10 shrink-0 place-items-center rounded-full text-[15px] font-semibold ' + AVATAR[i % AVATAR.length]}
                       aria-hidden="true"
@@ -148,6 +189,21 @@ export function TransferScreen(props: { onScored: (request: ScoreRequest, respon
               })}
             </div>
           </fieldset>
+
+          <label className="block">
+            <span className="mb-2 block text-[13px] text-muted">За что платите</span>
+            <select
+              value={purpose}
+              onChange={(e) => setPurpose(e.target.value as Purpose)}
+              className="min-h-12 w-full cursor-pointer rounded-[16px] bg-field px-4 text-[15px] font-medium"
+            >
+              {(Object.keys(PURPOSE_LABELS) as Purpose[]).map((p) => (
+                <option key={p} value={p}>
+                  {PURPOSE_LABELS[p]}
+                </option>
+              ))}
+            </select>
+          </label>
 
           <fieldset>
             <legend className="mb-2 text-[13px] text-muted">Что сообщает телефон</legend>

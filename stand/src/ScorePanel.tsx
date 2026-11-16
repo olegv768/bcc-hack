@@ -1,5 +1,5 @@
 import model from '../../service/model/model.json'
-import type { ScoreRequest, ScoreResponse } from './api.ts'
+import type { IncomingRequest, IncomingResponse, ScoreRequest, ScoreResponse } from './api.ts'
 import { ContributionChart } from './ContributionChart.tsx'
 import { ACTION_LABELS, riskText } from './scenarios.ts'
 
@@ -67,6 +67,45 @@ function RiskScale(props: { risk: number }) {
 
 const HISTORY_CODES = ['CONFIRMED_FRAUD', 'REPEAT_TARGET']
 
+const CREDIT_LABEL = { none: 'Зачислено', notify: 'Зачислено, получатель предупреждён', hold_credit: 'Зачисление придержано' }
+
+// Вторая сторона «треугольника»: клиент всё-таки заплатил, деньги пришли продавцу криптовалюты — клиенту BCC.
+// Банк получателя проверяет поступление (POST /incoming) и предупреждает продавца до того, как тот отпустит USDT.
+function RecipientSide(props: { credit: { request: IncomingRequest; response: IncomingResponse } }) {
+  const { request, response } = props.credit
+  return (
+    <section className="verdict-in rounded-[20px] border border-[#c9d5ff] bg-[#f3f6ff] p-5 sm:p-6" aria-live="polite">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[17px] font-semibold">Деньги дошли до получателя — клиента BCC</h3>
+        <span className="rounded-full bg-white px-3 py-1 text-[13px] font-semibold text-[#1d3fbf]">{CREDIT_LABEL[response.action]}</span>
+      </div>
+      <p className="mt-1 text-[14px] text-ink-2">
+        Банк получателя проверил поступление через <code className="font-mono text-[13px]">POST /incoming</code> до того, как продавец отпустит криптовалюту.
+      </p>
+      {response.recipient_message ? (
+        <div className="mt-4 rounded-[16px] bg-white p-4 shadow-[0_8px_24px_-18px_rgb(11_22_56/0.5)]">
+          <div className="text-[12px] text-muted">Уведомление в приложении продавца</div>
+          <div className="mt-1 text-[16px] font-semibold">{response.recipient_message.title}</div>
+          <p className="mt-1 text-[14.5px] leading-snug">{response.recipient_message.body}</p>
+        </div>
+      ) : (
+        <p className="mt-3 text-[14.5px]">Поступление выглядит обычным, продавца ни о чём не предупреждали.</p>
+      )}
+      {response.reasons.length > 0 && (
+        <ul className="mt-3 space-y-1 text-[14px] text-ink-2">
+          {response.reasons.map((r) => (
+            <li key={r.code} className="flex gap-2.5">
+              <span className="mt-[9px] size-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+              {r.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-[13px] text-muted">Сумма {request.amount.toLocaleString('ru-RU')} ₸ от «{request.sender.display_name}». Если отправитель в другом банке, BCC узнаёт о мошенничестве из Антифрод-центра Национального банка и придерживает зачисление.</p>
+    </section>
+  )
+}
+
 function ReasonList(props: { title: string; reasons: ScoreResponse['reasons']; tone?: 'alarm' }) {
   if (props.reasons.length === 0) return null
   return (
@@ -85,7 +124,11 @@ function ReasonList(props: { title: string; reasons: ScoreResponse['reasons']; t
 }
 
 // Что ушло в сервис оценки и что он ответил.
-export function ScorePanel(props: { request: ScoreRequest | null; response: ScoreResponse | null }) {
+export function ScorePanel(props: {
+  request: ScoreRequest | null
+  response: ScoreResponse | null
+  credit?: { request: IncomingRequest; response: IncomingResponse } | null
+}) {
   const { request, response } = props
   if (!request || !response) {
     return (
@@ -96,7 +139,7 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
     )
   }
 
-  const { account_id, ...features } = request.recipient
+  const { account_id, p2p_trader_profile, ...features } = request.recipient
   // причины из памяти сервиса о счёте: прошлые разборы аналитика и переводы других клиентов
   const fromHistory = response.reasons.filter((r) => HISTORY_CODES.includes(r.code))
   const aboutAccount = response.reasons.filter((r) => r.contribution !== null)
@@ -115,6 +158,8 @@ export function ScorePanel(props: { request: ScoreRequest | null; response: Scor
           <div className="tabular font-display text-[34px] leading-tight font-semibold sm:text-[42px]">{fixed(response.risk)}</div>
         </div>
       </div>
+
+      {props.credit && <RecipientSide credit={props.credit} />}
 
       <div className="space-y-9 pt-4">
         <RiskScale risk={response.risk} />

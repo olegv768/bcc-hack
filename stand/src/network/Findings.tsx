@@ -3,6 +3,7 @@ import { Confidence } from './NodePanel.tsx'
 
 const KIND: Record<FindingKind, string> = {
   confirmed_link: 'Связь с делом',
+  triangle: '«Треугольник»',
   collector: 'Сборщик',
   repeated_pattern: 'Повторяющаяся схема',
   transit: 'Транзитный счёт',
@@ -14,6 +15,7 @@ const KIND: Record<FindingKind, string> = {
 
 const KIND_TONE: Partial<Record<FindingKind, string>> = {
   confirmed_link: 'bg-hold text-white',
+  triangle: 'bg-[#e6ecff] text-[#1d3fbf]',
   collector: 'bg-hold-bg text-hold-ink',
   repeated_pattern: 'bg-hold-bg text-hold-ink',
   transit: 'bg-hold-bg text-hold-ink',

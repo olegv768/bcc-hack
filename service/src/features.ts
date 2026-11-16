@@ -19,10 +19,18 @@ export function transform(key: FeatureKey, value: number): number {
   return LOG_SCALED.includes(key) ? Math.log1p(Math.max(0, value)) : Math.min(1, Math.max(0, value))
 }
 
+// Назначение платежа, которое клиент выбирает в приложении перед переводом.
+export const PURPOSES = ['family', 'goods', 'services', 'crypto_p2p', 'other'] as const
+export type Purpose = (typeof PURPOSES)[number]
+
 export type TransferContext = {
   amount: number
   sender_on_call: boolean | null // сигнал клиентского модуля; null — модуль не подключён
   remote_access_active: boolean | null // телефоном могут управлять удалённо (AnyDesk и подобные); null — не проверялось
   first_transfer_to_recipient: boolean | null // true — клиент раньше не переводил этому получателю; null — банк не сообщил
   amount_to_typical_ratio: number | null // сумма перевода / обычный перевод этого клиента
+  payment_purpose?: Purpose | null // за что клиент платит, по его словам; null — банк не спрашивал
+  // Банк по своим данным видит, что получатель продаёт криптовалюту на P2P-площадках
+  // (много разовых плательщиков с назначением «криптовалюта», деньги уходят на биржу)
+  recipient_p2p_trader?: boolean | null
 }

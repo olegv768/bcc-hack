@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
+import type { Purpose } from './features.ts'
 import type { AccountHistory } from './model.ts'
 
 export type AlertStatus = 'new' | 'in_progress' | 'closed'
@@ -30,9 +31,14 @@ export type Alert = {
   model_version: string
 }
 
-export type AlertSignals = { on_call: boolean | null; remote_access: boolean | null; first_transfer: boolean | null }
+export type AlertSignals = {
+  on_call: boolean | null
+  remote_access: boolean | null
+  first_transfer: boolean | null
+  purpose?: Purpose | null // за что, по словам клиента, он платил
+}
 
-export const NO_SIGNALS: AlertSignals = { on_call: null, remote_access: null, first_transfer: null }
+export const NO_SIGNALS: AlertSignals = { on_call: null, remote_access: null, first_transfer: null, purpose: null }
 
 const MAX_ALERTS = 2000
 const DAY_MS = 24 * 60 * 60 * 1000

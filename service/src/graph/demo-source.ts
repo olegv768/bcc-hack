@@ -4,6 +4,7 @@
 // Сверху накладывается живая очередь алертов сервиса: перевод со стенда сразу виден в графе.
 
 import { createRng, uniform } from '../../../ml/random.ts'
+import { money } from './investigate.ts'
 import type { Alert } from '../alerts.ts'
 import type { AntifraudMark, BankGraphSource, Entity, ExternalKind, IncomingCase, TechLink, TechLinkType, Transfer } from './types.ts'
 
@@ -27,8 +28,8 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
   const add = (entity: Entity) => entities.set(entity.id, entity)
   const link = (type: TechLinkType, from: string, to: string, firstDaysAgo: number, lastDaysAgo = 0) =>
     links.push({ type, from, to, first_seen: at(firstDaysAgo), last_seen: at(lastDaysAgo) })
-  const send = (from: string, to: string, amount: number, daysAgo: number, minutes = 0, channel: Transfer['channel'] = 'p2p') => {
-    const transfer: Transfer = { id: 'tr_' + String(++seq).padStart(5, '0'), from, to, amount: Math.round(amount), at: at(daysAgo, minutes), channel, status: 'done' }
+  const send = (from: string, to: string, amount: number, daysAgo: number, minutes = 0, channel: Transfer['channel'] = 'p2p', purpose: Transfer['purpose'] = null) => {
+    const transfer: Transfer = { id: 'tr_' + String(++seq).padStart(5, '0'), from, to, amount: Math.round(amount), at: at(daysAgo, minutes), channel, status: 'done', purpose }
     transfers.push(transfer)
     return transfer
   }
@@ -218,6 +219,33 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
     send(drop.account, collector.account, amount * 0.93, daysAgo, 120 + 30 + Math.round(uniform(rng, 0, 40)))
   }
 
+  // --- «треугольник»: честный продавец криптовалюты, чьими реквизитами расплатился мошенник ---
+  // Продавец давно торгует USDT на P2P-площадке: покупатели платят ему с назначением «криптовалюта»,
+  // через несколько часов он докупает USDT на бирже на свой счёт. Мошенник выставил на OLX «дешёвый
+  // iPhone» и дал покупателям реквизиты продавца, а сам в это время купил у него USDT.
+  const trader = person({ id: 'cl_90501', name: 'Ринат К. (продаёт USDT)', account: 'tok_p2p771', opened: 1600 })
+  ownTech(trader)
+  external('ext_exch_own', 'Криптобиржа, счёт владельца', 'exchange')
+  regulars.slice(4, 12).forEach((p, i) => {
+    const day = 2 + i * 2.5
+    const amount = Math.round(uniform(rng, 60, 320)) * 1000
+    send(p.account, trader.account, amount, day, 300, 'p2p', 'crypto_p2p')
+    send(trader.account, 'ext_exch_own', amount * 0.99, day, 300 + 180 + Math.round(uniform(rng, 0, 240)), 'interbank')
+  })
+  const triangleVictims: [Person, number, number, string][] = [
+    [{ id: 'cl_82301', name: 'Алмас Т.', account: 'tok_t82301', opened: 2400 }, 185_000, 3, 'iPhone 15 по объявлению на OLX'],
+    [{ id: 'cl_82302', name: 'Жанар Е.', account: 'tok_t82302', opened: 3300 }, 240_000, 9, 'ноутбук по объявлению в Telegram'],
+  ]
+  for (const [v, amount, daysAgo, item] of triangleVictims) {
+    person(v)
+    ownTech(v)
+    send(v.account, seller.account, Math.round(uniform(rng, 30, 90)) * 1000, daysAgo + 12)
+    const tr = send(v.account, trader.account, amount, daysAgo, 420, 'p2p', 'goods')
+    send(trader.account, 'ext_exch_own', amount * 0.99, daysAgo, 420 + 200, 'interbank')
+    mark(v.id, { kind: 'complaint', ref: 'ЖБ-' + v.id.slice(-4), at: at(daysAgo - 1), note: `Жалоба клиента: оплатил ${item}, продавец пропал, товар не получен` })
+    mark(trader.account, { kind: 'center', ref: 'АЦ-' + tr.id.slice(-5), at: at(daysAgo - 1), note: `Антифрод-центр Нацбанка: перевод ${money(amount)} от ${v.name} отмечен как мошеннический по жалобе отправителя` })
+  }
+
   // сигналы основного антифрода, с которых сотрудник начинает расследование
   engineCases.push(
     { ref: 'AF-77105', source: 'antifraud_engine', entity_id: drop1.account, transfer_id: transfers.find((t) => t.from === 'tok_v80105' && t.to === drop1.account)?.id ?? null, amount: 890_000, at: at(1), priority: 'high',
@@ -226,6 +254,8 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
       summary: 'Счёт за неделю получил деньги от трёх незнакомых отправителей' },
     { ref: 'AF-77051', source: 'antifraud_engine', entity_id: dropB1.account, transfer_id: null, amount: null, at: at(4, 300), priority: 'medium',
       summary: 'Входящие «предоплаты» от незнакомых людей уходят дальше за полчаса' },
+    { ref: 'АЦ-2026-1187', source: 'antifraud_center', entity_id: trader.account, transfer_id: transfers.find((t) => t.from === 'tok_t82301' && t.to === trader.account)?.id ?? null, amount: 185_000, at: at(2), priority: 'high',
+      summary: 'Антифрод-центр: банк отправителя сообщил о мошенничестве. Получатель — клиент нашего банка, продаёт USDT на P2P' },
     { ref: 'AF-76980', source: 'antifraud_engine', entity_id: seller.account, transfer_id: null, amount: null, at: at(6), priority: 'medium',
       summary: 'Много входящих от разных людей за неделю' },
   )
@@ -238,7 +268,7 @@ export function createDemoGraphSource(options: { now?: number; alerts?: () => Al
     live().flatMap((a) => {
       const from = a.client_ref ? mainAccount(a.client_ref) : undefined
       if (!from || !entities.has(a.account_id)) return []
-      return [{ id: a.transfer_id ?? a.alert_id, from, to: a.account_id, amount: a.amount, at: a.created_at, channel: 'p2p' as const, status: a.action === 'hold' ? ('held' as const) : ('warned' as const) }]
+      return [{ id: a.transfer_id ?? a.alert_id, from, to: a.account_id, amount: a.amount, at: a.created_at, channel: 'p2p' as const, status: a.action === 'hold' ? ('held' as const) : ('warned' as const), purpose: a.signals?.purpose ?? null }]
     })
 
   const liveMarks = (id: string): AntifraudMark[] =>

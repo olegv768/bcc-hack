@@ -205,7 +205,7 @@ describe('очередь алертов для аналитика', () => {
     const alert = queue.items.find((a: { alert_id: string }) => a.alert_id === scored.alert_id)
     expect(alert).toMatchObject({ priority: 'high', status: 'new', action: 'hold', amount: 400000, client_ref: 'cl_777', transfer_id: 'tr_1', account_id: 'tok_case' })
     expect(alert.triggers.map((t: { code: string }) => t.code)).toEqual(expect.arrayContaining(['NEW_ACCOUNT', 'ON_CALL']))
-    expect(alert.signals).toEqual({ on_call: true, remote_access: null, first_transfer: true })
+    expect(alert.signals).toEqual({ on_call: true, remote_access: null, first_transfer: true, purpose: null })
     expect(alert.triggers[0].text).toMatch(/[а-я]/i)
   })
 

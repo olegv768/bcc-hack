@@ -364,6 +364,123 @@ paths:
                   transfer:
                     type: object
                     nullable: true
+  /incoming:
+    post:
+      summary: Проверить поступление на счёт клиента банка (сторона получателя)
+      description: |
+        Банк вызывает, когда на счёт его клиента приходит перевод — из этого же банка или из другого.
+        Против схемы «треугольник»: обманутый покупатель платит «за товар» честному продавцу
+        криптовалюты, и тот отпускает криптовалюту мошеннику. Модуль предупреждает продавца до этого.
+
+        - `hold_credit` — придержать зачисление: банк отправителя сообщил о мошенничестве через
+          Антифрод-центр Национального банка (`antifraud_center.flagged`).
+        - `notify` — зачислить и предупредить получателя: назначение «товар или услуга», а получатель
+          продаёт криптовалюту; или отправитель был на звонке.
+        - `none` — ничего не делать.
+
+        Для `notify` и `hold_credit` создаётся алерт в очереди `GET /alerts`.
+      operationId: incoming
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, recipient, sender]
+              properties:
+                transfer_id:
+                  type: string
+                lang:
+                  type: string
+                  enum: [ru, kk, en]
+                  default: ru
+                amount:
+                  type: number
+                recipient:
+                  type: object
+                  required: [account_id]
+                  properties:
+                    account_id:
+                      type: string
+                    client_ref:
+                      type: string
+                    p2p_trader_profile:
+                      type: boolean
+                      nullable: true
+                sender:
+                  type: object
+                  required: [bank]
+                  properties:
+                    bank:
+                      type: string
+                      enum: [same, other]
+                    display_name:
+                      type: string
+                      description: Имя, как его показывает банк («Алмас Т.»), — получатель сверит его с покупателем на площадке.
+                    first_transfer_to_recipient:
+                      type: boolean
+                      nullable: true
+                    payment_purpose:
+                      type: string
+                      nullable: true
+                      enum: [family, goods, services, crypto_p2p, other]
+                    on_call:
+                      type: boolean
+                      nullable: true
+                antifraud_center:
+                  type: object
+                  nullable: true
+                  description: Отметка Антифрод-центра Национального банка по этому переводу.
+                  properties:
+                    flagged:
+                      type: boolean
+                    ref:
+                      type: string
+                    reason:
+                      type: string
+            example:
+              amount: 185000
+              recipient: { account_id: tok_p2p771, p2p_trader_profile: true }
+              sender: { bank: other, display_name: Алмас Т., first_transfer_to_recipient: true, payment_purpose: goods }
+      responses:
+        '200':
+          description: Решение для зачисления и текст уведомления получателю
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  transfer_id:
+                    type: string
+                    nullable: true
+                  action:
+                    type: string
+                    enum: [none, notify, hold_credit]
+                  reasons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        code:
+                          type: string
+                          enum: [ANTIFRAUD_CENTER, TRIANGLE, SENDER_ON_CALL]
+                        text:
+                          type: string
+                  recipient_message:
+                    type: object
+                    nullable: true
+                    properties:
+                      title:
+                        type: string
+                      body:
+                        type: string
+                  alert_id:
+                    type: string
+                    nullable: true
+        '400':
+          $ref: '#/components/responses/InvalidRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /health:
     get:
       summary: Проверка, что сервис работает
@@ -477,6 +594,14 @@ components:
           nullable: true
           minimum: 0
           description: В сколько других счетов входили с тех же устройств, что и в этот счёт.
+        p2p_trader_profile:
+          type: boolean
+          nullable: true
+          default: null
+          description: |
+            Банк по своим данным видит, что получатель продаёт криптовалюту на P2P-площадках (много
+            разовых плательщиков с назначением «криптовалюта», деньги уходят на биржу). Нужен для правила
+            «треугольник». В оценку счёта не входит.
     Context:
       type: object
       required: [amount]
@@ -509,6 +634,15 @@ components:
           minimum: 0
           default: null
           description: Сумма перевода, делённая на обычный перевод этого клиента (например, медиану за 90 дней).
+        payment_purpose:
+          type: string
+          nullable: true
+          default: null
+          enum: [family, goods, services, crypto_p2p, other]
+          description: |
+            За что клиент платит, по его словам (банк спрашивает в приложении). Оплата товара или услуги
+            новому получателю с `p2p_trader_profile: true` — схема «треугольник»: сервис предупреждает
+            клиента (код причины TRIANGLE). null — банк не спрашивал, правило не срабатывает.
     ScoreResponse:
       type: object
       required: [request_id, risk, risk_level, mode, action, recommended_action, reasons, client_message, contributions, missing_features, model_version]
@@ -577,7 +711,7 @@ components:
       properties:
         code:
           type: string
-          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, CONFIRMED_FRAUD, REPEAT_TARGET, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT]
+          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, CONFIRMED_FRAUD, REPEAT_TARGET, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT, TRIANGLE]
         text:
           type: string
           description: Причина на языке из поля lang.
@@ -650,6 +784,11 @@ components:
               type: boolean
               nullable: true
               description: Клиент переводил этому получателю впервые.
+            purpose:
+              type: string
+              nullable: true
+              enum: [family, goods, services, crypto_p2p, other]
+              description: Назначение платежа, которое указал клиент.
         model_version:
           type: string
     FlaggedAccount:
@@ -698,7 +837,7 @@ components:
           description: Номер алерта (al_…) или сигнала основного антифрода (AF-…)
         source:
           type: string
-          enum: [alert_queue, antifraud_engine]
+          enum: [alert_queue, antifraud_engine, antifraud_center]
         entity_id:
           type: string
         transfer_id:
@@ -768,7 +907,7 @@ components:
       properties:
         role:
           type: string
-          enum: [confirmed_fraud, possible_collector, possible_dropper, possible_victim, busy_legit, regular]
+          enum: [confirmed_fraud, possible_collector, possible_dropper, p2p_intermediary, possible_victim, busy_legit, regular]
         label:
           type: string
         confidence:
@@ -793,7 +932,7 @@ components:
           type: string
         kind:
           type: string
-          enum: [confirmed_link, collector, repeated_pattern, transit, shared_identifier, victims, central_node, not_suspicious]
+          enum: [confirmed_link, triangle, collector, repeated_pattern, transit, shared_identifier, victims, central_node, not_suspicious]
         title:
           type: string
         explanation:

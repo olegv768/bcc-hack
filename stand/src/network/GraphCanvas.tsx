@@ -493,6 +493,7 @@ function GraphLegend() {
     ['Признаки сборщика', roleStyle({ assessment: { role: 'possible_collector' } })],
     ['Подтверждённое дело', roleStyle({ assessment: { role: 'confirmed_fraud' } })],
     ['Вероятно, пострадавший', roleStyle({ assessment: { role: 'possible_victim' } })],
+    ['P2P-продавец, возможный «треугольник»', roleStyle({ assessment: { role: 'p2p_intermediary' } })],
     ['Много отправителей, не транзит', roleStyle({ assessment: { role: 'busy_legit' } })],
   ] as const
   const types = ['client', 'account', 'card', 'device', 'ip', 'phone', 'external'] as const

@@ -21,6 +21,7 @@ export const GRAPH = {
   critical: '#ec4f55',
   warning: '#e0a43a',
   good: '#24a86c',
+  info: '#5b8def', // посредник P2P: не участник схемы, но его реквизиты использовали
 }
 
 // Значки 12×12, рисуются линией
@@ -58,6 +59,7 @@ export function roleStyle(n: { assessment?: { role: Role } | null; external?: st
   if (role === 'possible_dropper') return { ...base, fill: GRAPH.critical, stroke: GRAPH.critical, icon: '#fff', swatch: GRAPH.critical }
   if (role === 'possible_victim') return { ...base, ring: GRAPH.warning, swatch: GRAPH.warning }
   if (role === 'busy_legit') return { ...base, ring: GRAPH.good, swatch: GRAPH.good }
+  if (role === 'p2p_intermediary') return { ...base, ring: GRAPH.info, outer: { color: GRAPH.info, dashed: true }, swatch: GRAPH.info }
   return base
 }
 
@@ -68,6 +70,7 @@ export const ROLE_COLOR: Partial<Record<Role, string>> = {
   possible_dropper: '#d93b41',
   possible_victim: '#d99a1e',
   busy_legit: '#1f9e63',
+  p2p_intermediary: '#2f5bff',
 }
 
 export const TYPE_LABEL: Record<EntityType | 'external', string> = {
@@ -85,6 +88,7 @@ export const ROLE_SHORT: Record<Role, string> = {
   possible_collector: 'Признаки сборщика',
   possible_dropper: 'Признаки дропа',
   possible_victim: 'Вероятно, пострадавший',
+  p2p_intermediary: 'P2P-продавец: возможный «треугольник»',
   busy_legit: 'Много отправителей, не транзит',
   regular: 'Признаков схемы нет',
 }

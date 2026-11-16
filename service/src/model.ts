@@ -34,6 +34,7 @@ export type ReasonCode =
   | 'REMOTE_ACCESS'
   | 'FIRST_TRANSFER'
   | 'UNUSUAL_AMOUNT'
+  | 'TRIANGLE'
 
 export type Reason = { code: ReasonCode; value: number | null; contribution: number | null }
 
@@ -127,8 +128,15 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   // Подтверждённый мошеннический счёт: придерживаем всегда.
   if (history.confirmedFraud) action = 'hold'
 
+  // «Треугольник»: клиент платит за товар или услугу, а получатель — продавец криптовалюты на P2P.
+  // Так мошенник расплачивается деньгами покупателя за чужую криптовалюту. Счёт получателя при этом
+  // обычно честный и оценку не поднимает, поэтому правило отдельное: предупредить, а не придержать.
+  const triangle = isTriangle(context)
+  if (triangle && action === 'allow') action = 'warn'
+
   const reasons: Reason[] = []
   if (history.confirmedFraud) reasons.push({ code: 'CONFIRMED_FRAUD', value: null, contribution: null })
+  if (triangle) reasons.push({ code: 'TRIANGLE', value: null, contribution: null })
   if (repeatTarget) reasons.push({ code: 'REPEAT_TARGET', value: history.otherClients24h, contribution: null })
 
   if (!history.confirmedLegit) {
@@ -147,7 +155,16 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
     if (unusualAmount) reasons.push({ code: 'UNUSUAL_AMOUNT', value: context.amount_to_typical_ratio, contribution: null })
   }
 
-  return { risk: round(risk, 4), action, reasons, contributions, missing }
+  return { risk: round(risk, 4), action, reasons, contributions, missing, triangle }
+}
+
+// Оплата товара или услуги новому получателю, который продаёт криптовалюту на P2P.
+export function isTriangle(context: Pick<TransferContext, 'payment_purpose' | 'recipient_p2p_trader' | 'first_transfer_to_recipient'>) {
+  return (
+    context.recipient_p2p_trader === true &&
+    (context.payment_purpose === 'goods' || context.payment_purpose === 'services') &&
+    context.first_transfer_to_recipient !== false
+  )
 }
 
 export function riskLevel(model: Model, risk: number): 'low' | 'medium' | 'high' {

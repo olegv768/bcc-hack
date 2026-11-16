@@ -9,7 +9,7 @@ export type ScoreRequest = {
   transfer_id: string
   lang: Lang
   client_ref?: string
-  recipient: { account_id: string } & RecipientFeatures
+  recipient: { account_id: string; p2p_trader_profile?: boolean | null } & RecipientFeatures
   context: TransferContext
 }
 
@@ -45,6 +45,33 @@ async function readJson(response: Response | null) {
 
 export async function score(request: ScoreRequest): Promise<ScoreResponse> {
   const response = await fetch('/api/score', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(request),
+  }).catch(() => null)
+  return readJson(response)
+}
+
+// Сторона получателя: банк получателя (BCC) проверяет поступление перед зачислением.
+export type IncomingRequest = {
+  transfer_id: string
+  lang: Lang
+  amount: number
+  recipient: { account_id: string; client_ref?: string; p2p_trader_profile: boolean | null }
+  sender: { bank: 'same' | 'other'; display_name?: string; first_transfer_to_recipient: boolean | null; payment_purpose: string | null; on_call: boolean | null }
+  antifraud_center: { flagged: boolean; ref?: string; reason?: string } | null
+}
+
+export type IncomingResponse = {
+  transfer_id: string | null
+  action: 'none' | 'notify' | 'hold_credit'
+  reasons: { code: string; text: string }[]
+  recipient_message: { title: string; body: string } | null
+  alert_id: string | null
+}
+
+export async function incoming(request: IncomingRequest): Promise<IncomingResponse> {
+  const response = await fetch('/api/incoming', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(request),

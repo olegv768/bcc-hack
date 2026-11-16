@@ -2,6 +2,8 @@
 // Модуль не хранит банковские данные у себя. Он читает их через BankGraphSource:
 // в банке это адаптер к его хранилищу, на стенде — демонстрационный набор (demo-source.ts).
 
+import type { Purpose } from '../features.ts'
+
 export type EntityType = 'client' | 'account' | 'card' | 'device' | 'ip' | 'phone'
 
 // external — счёт в другом банке, биржа или снятие наличных: банк видит только сам перевод туда
@@ -43,11 +45,13 @@ export type Transfer = {
   channel: 'p2p' | 'interbank' | 'card' | 'cash'
   // live — перевод из очереди алертов: банк его предупредил или придержал, он мог и не пройти
   status?: 'done' | 'warned' | 'held'
+  purpose?: Purpose | null // назначение, которое указал отправитель
 }
 
 // Что уже известно банку о сущности из основного антифрода и разборов дел.
 export type AntifraudMark = {
-  kind: 'confirmed_fraud' | 'cleared' | 'alert'
+  // complaint — обращение клиента («оплатил товар, товар не пришёл»); center — отметка Антифрод-центра Нацбанка
+  kind: 'confirmed_fraud' | 'cleared' | 'alert' | 'complaint' | 'center'
   ref: string // номер дела или алерта
   at: string
   note: string
@@ -74,7 +78,7 @@ export interface BankGraphSource {
 
 export type IncomingCase = {
   ref: string // номер алерта или сигнала основного антифрода
-  source: 'alert_queue' | 'antifraud_engine'
+  source: 'alert_queue' | 'antifraud_engine' | 'antifraud_center'
   entity_id: string
   transfer_id: string | null
   amount: number | null
@@ -101,6 +105,7 @@ export type Role =
   | 'possible_dropper' // транзитный счёт
   | 'possible_collector' // собирает деньги с транзитных счетов
   | 'possible_victim'
+  | 'p2p_intermediary' // продаёт криптовалюту на P2P; его реквизитами могли расплатиться в «треугольнике»
   | 'busy_legit' // много отправителей, но деньги не уходят транзитом
   | 'regular'
 
@@ -153,7 +158,7 @@ export type GraphEdge = {
   last_seen: string
 }
 
-export type FindingKind = 'transit' | 'collector' | 'shared_identifier' | 'repeated_pattern' | 'confirmed_link' | 'central_node' | 'victims' | 'not_suspicious'
+export type FindingKind = 'triangle' | 'transit' | 'collector' | 'shared_identifier' | 'repeated_pattern' | 'confirmed_link' | 'central_node' | 'victims' | 'not_suspicious'
 
 export type Finding = {
   id: string
