@@ -203,11 +203,45 @@ details[open] .details-chevron {
 
 /* --- граф расследования --- */
 
-/* точечная сетка, как на холсте: помогает глазу держать масштаб */
+/* глубокий фон: чуть светлее в центре, где обычно стоит расследуемый счёт */
 .graph-canvas {
-  background-color: #0c1c26;
-  background-image: radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1.2px);
-  background-size: 22px 22px;
+  background-color: #0b1a23;
+  background-image:
+    radial-gradient(ellipse 70% 60% at 50% 45%, rgb(38 78 96 / 0.35), transparent 70%),
+    radial-gradient(ellipse 120% 100% at 50% 50%, transparent 55%, rgb(3 9 13 / 0.55));
+}
+
+/* появление графа: узлы «расцветают» волнами от корня, связи и подписи — следом */
+.graph-canvas .bloom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: bloom 0.55s cubic-bezier(0.2, 0.9, 0.25, 1.15) both;
+}
+.graph-canvas .grow {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 0.18s ease-out;
+}
+.graph-canvas .edge-in {
+  animation: fade-in 0.5s ease-out both;
+}
+.graph-canvas .label-in {
+  animation: fade-in 0.4s ease-out both;
+}
+.graph-canvas .graph-label {
+  transition: opacity 0.2s;
+}
+
+@keyframes bloom {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
 }
 
 .graph-panel {
@@ -231,8 +265,15 @@ details[open] .details-chevron {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .flow {
+  .flow,
+  .graph-canvas .bloom,
+  .graph-canvas .edge-in,
+  .graph-canvas .label-in {
     animation: none;
+  }
+  .graph-canvas .grow,
+  .graph-canvas .graph-label {
+    transition: none;
   }
   .verdict-in {
     animation: none;

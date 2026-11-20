@@ -46,6 +46,9 @@ export function GraphCanvas(props: {
     const newRoot = lastRoot.current !== data.root
     lastRoot.current = data.root
     if (newRoot) positions.current.clear()
+    // узлы, которых на экране ещё не было: они «расцветают» волнами от корня, по уровню связи
+    const fresh = new Set(data.nodes.filter((n) => !positions.current.has(n.id)).map((n) => n.id))
+    const wave = (level: number) => (reduced ? 0 : 120 + level * 220)
     // сотрудник уже сам выбрал вид (колесо, кнопки, перетаскивание) — автоматически не вписываем
     let touched = !newRoot
     setHover(null)
@@ -107,8 +110,15 @@ export function GraphCanvas(props: {
         .attr('fill', color!)
     }
 
+    // мягкое свечение: узлы схемы светятся своим цветом, выбранный и наведённый — белым
+    for (const [id, deviation] of [['glow', 5], ['glow-soft', 2.5]] as const) {
+      const f = defs.append('filter').attr('id', 'g-' + id).attr('x', '-100%').attr('y', '-100%').attr('width', '300%').attr('height', '300%')
+      f.append('feGaussianBlur').attr('stdDeviation', deviation)
+    }
+
     const viewport = svg.append('g')
     const edgeLayer = viewport.append('g')
+    const flowLayer = viewport.append('g').attr('pointer-events', 'none')
     const nodeLayer = viewport.append('g')
     const labelLayer = viewport.append('g').attr('pointer-events', 'none')
 
@@ -116,8 +126,33 @@ export function GraphCanvas(props: {
       .selectAll<SVGPathElement, SimEdge>('path')
       .data(edges, (d) => d.id)
       .join('path')
+      .attr('id', (_e, i) => 'ge-' + i)
       .attr('fill', 'none')
       .attr('stroke-linecap', 'round')
+      .attr('class', (e) => (fresh.has(e.source.id) || fresh.has(e.target.id) ? 'edge-in' : null))
+      .style('animation-delay', (e) => `${wave(Math.max(e.source.level, e.target.level)) + 160}ms`)
+
+    // Деньги идут по переводам, связанным со схемой: точка бежит от отправителя к получателю.
+    // Так видно направление и куда стекаются деньги, без чтения стрелок.
+    const scheme = (n: SimNode) => roleStyle(n).fill === GRAPH.critical
+    const flowEdges = reduced ? [] : edges.map((e, i) => ({ e, i })).filter(({ e }) => e.type === 'transfer' && (scheme(e.source) || scheme(e.target)))
+    const flowSel = flowLayer
+      .selectAll<SVGCircleElement, { e: SimEdge; i: number }>('circle')
+      .data(flowEdges)
+      .join('circle')
+      .attr('r', 2.3)
+      .attr('fill', GRAPH.amount)
+      .attr('filter', 'url(#g-glow-soft)')
+    flowSel.each(function ({ e, i }) {
+      const seconds = 1.8 + Math.min(2.2, (e.total ?? 0) / 1_500_000)
+      d3.select(this)
+        .append('animateMotion')
+        .attr('dur', `${seconds.toFixed(2)}s`)
+        .attr('repeatCount', 'indefinite')
+        .attr('begin', `${(-(i * 0.37) % seconds).toFixed(2)}s`)
+        .append('mpath')
+        .attr('href', '#ge-' + i)
+    })
 
     const nodeSel = nodeLayer
       .selectAll<SVGGElement, SimNode>('g')
@@ -131,7 +166,22 @@ export function GraphCanvas(props: {
 
     // невидимый круг побольше: в маленький узел легко попасть пальцем
     nodeSel.append('circle').attr('r', (d) => Math.max(d.r + 6, 16)).attr('fill', 'transparent')
-    nodeSel
+    // bloom — появление (один раз), grow — увеличение при наведении; у них разные transform
+    const bodySel = nodeSel
+      .append('g')
+      .attr('class', (d) => (fresh.has(d.id) ? 'bloom' : null))
+      .style('animation-delay', (d) => `${wave(d.level)}ms`)
+      .append('g')
+      .attr('class', 'grow')
+    bodySel
+      .filter((d) => scheme(d))
+      .append('circle')
+      .attr('class', 'halo')
+      .attr('r', (d) => d.r + 5)
+      .attr('fill', GRAPH.critical)
+      .attr('opacity', 0.45)
+      .attr('filter', 'url(#g-glow)')
+    bodySel
       .filter((d) => d.id === data.root)
       .append('circle')
       .attr('r', (d) => d.r + 9)
@@ -141,15 +191,16 @@ export function GraphCanvas(props: {
       .attr('stroke-width', 1.5)
       .attr('stroke-dasharray', '1 3.2')
       .attr('stroke-linecap', 'round')
-    nodeSel
+    bodySel
       .append('circle')
       .attr('class', 'select-ring')
       .attr('r', (d) => d.r + 5)
       .attr('fill', 'none')
       .attr('stroke', '#ffffff')
       .attr('stroke-width', 2)
+      .attr('filter', 'url(#g-glow-soft)')
       .attr('opacity', 0)
-    nodeSel.each(function (d) {
+    bodySel.each(function (d) {
       const style = roleStyle(d)
       const g = d3.select(this)
       if (style.outer) {
@@ -183,6 +234,8 @@ export function GraphCanvas(props: {
       .selectAll<SVGGElement, SimNode>('g')
       .data(nodes, (d) => d.id)
       .join('g')
+      .attr('class', (d) => 'graph-label' + (fresh.has(d.id) ? ' label-in' : ''))
+      .style('animation-delay', (d) => `${wave(d.level) + 260}ms`)
     labelSel
       .append('rect')
       .attr('rx', 6)
@@ -218,8 +271,8 @@ export function GraphCanvas(props: {
           .distance((e) => (e.type === 'owns' || e.type === 'card' ? 26 : e.type === 'transfer' ? 95 : 55))
           .strength((e) => (e.type === 'owns' || e.type === 'card' ? 1 : 0.45)),
       )
-      .force('charge', d3.forceManyBody<SimNode>().strength((d) => -110 - 220 * d.centrality).distanceMax(520))
-      .force('collide', d3.forceCollide<SimNode>((d) => d.r + 7))
+      .force('charge', d3.forceManyBody<SimNode>().strength((d) => -140 - 240 * d.centrality).distanceMax(560))
+      .force('collide', d3.forceCollide<SimNode>((d) => d.r + (d.type === 'client' || d.type === 'account' || d.external ? 16 : 7)).iterations(2))
       .force('x', d3.forceX(0).strength(0.03))
       .force('y', d3.forceY(0).strength(0.04))
       .stop()
@@ -285,6 +338,9 @@ export function GraphCanvas(props: {
       const s = 1 / Math.sqrt(k)
 
       nodeSel.attr('opacity', (d) => (nodeOn(d.id) ? 1 : 0.12))
+      // наведённый узел и его соседи чуть крупнее: видно, кто с кем связан
+      bodySel.style('transform', (d) => (near?.has(d.id) ? `scale(${d.id === hover ? 1.22 : 1.1})` : null))
+      flowSel.attr('opacity', ({ e }) => (edgeOn(e) ? 1 : 0.06))
       nodeSel.select('circle.select-ring').attr('opacity', (d) => (d.id === selected ? 1 : 0))
 
       edgeSel
@@ -356,7 +412,7 @@ export function GraphCanvas(props: {
       const xs = nodes.map((n) => n.x!)
       const ys = nodes.map((n) => n.y!)
       const [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)]
-      const k = Math.min(1.8, 0.86 / Math.max((x1 - x0 + 80) / width, (y1 - y0 + 90) / height))
+      const k = Math.min(2.2, 0.92 / Math.max((x1 - x0 + 80) / width, (y1 - y0 + 90) / height))
       const t = d3.zoomIdentity.translate(width / 2 - (k * (x0 + x1)) / 2, height / 2 - (k * (y0 + y1)) / 2).scale(k)
       if (animate && !reduced) svg.transition().duration(450).call(zoom.transform, t)
       else svg.call(zoom.transform, t)
