@@ -2,6 +2,11 @@
 
 import { readFileSync } from 'node:fs'
 import { FEATURE_KEYS, type FeatureKey, type RecipientFeatures, type TransferContext } from './features.ts'
+import { logitTrees, scoreTrees, type TreeModel } from './trees.ts'
+
+// Сервис принимает два вида модели (поле kind в model.json):
+// - trees — рабочая: LightGBM с монотонными ограничениями, вклады признаков по TreeSHAP (trees.ts);
+// - таблицы (kind нет) — объяснимый бустинг ml/ebm.ts: им обучается модель на CSV банка без Python.
 
 // Объяснимый бустинг (обучение — ml/ebm.ts). Оценка — сумма таблиц:
 // по одной на каждый признак (значения разбиты на интервалы, у каждого интервала свой вклад)
@@ -13,13 +18,16 @@ export type Term = {
   scores: number[] // вклады клеток, развёрнутые в один список
 }
 
-export type Model = {
+export type TableModel = {
+  kind?: undefined
   version: string
   bias: number
   terms: Term[]
   // пороги оценки, подобранные на проверочной выборке по доле ложных срабатываний
   thresholds: { soft: number; warn: number; hold: number }
 }
+
+export type Model = TableModel | TreeModel
 
 export type Action = 'allow' | 'warn' | 'hold'
 
@@ -76,13 +84,20 @@ export function binOf(edges: number[], value: number): number {
   return low
 }
 
-export function scoreRecipient(model: Model, features: RecipientFeatures) {
-  let logit = model.bias
-  const contributions = Object.fromEntries(FEATURE_KEYS.map((key) => [key, 0])) as Record<FeatureKey, number>
+// explain = false — только оценка, без вкладов признаков: так быстрее при обучении и проверке
+export function scoreRecipient(model: Model, features: RecipientFeatures, explain = true) {
   const known = (key: FeatureKey) => features[key] !== null && features[key] !== undefined
   // непереданный признак ничего не добавляет: это равносильно «как у среднего счёта»
   const missing = FEATURE_KEYS.filter((key) => !known(key))
+  const zeros = () => Object.fromEntries(FEATURE_KEYS.map((key) => [key, 0])) as Record<FeatureKey, number>
 
+  if (model.kind === 'trees') {
+    const { logit, contributions } = explain ? scoreTrees(model, features) : { logit: logitTrees(model, features), contributions: zeros() }
+    return { risk: 1 / (1 + Math.exp(-logit)), logit, contributions, missing }
+  }
+
+  let logit = model.bias
+  const contributions = zeros()
   for (const term of model.terms) {
     if (!term.features.every(known)) continue
     let cell = 0
@@ -94,11 +109,11 @@ export function scoreRecipient(model: Model, features: RecipientFeatures) {
     logit += score
   }
 
-  return { risk: 1 / (1 + Math.exp(-logit)), contributions, missing }
+  return { risk: 1 / (1 + Math.exp(-logit)), logit, contributions, missing }
 }
 
-export function decide(model: Model, features: RecipientFeatures, context: TransferContext, history: AccountHistory = NO_HISTORY) {
-  const { risk, contributions, missing } = scoreRecipient(model, features)
+export function decide(model: Model, features: RecipientFeatures, context: TransferContext, history: AccountHistory = NO_HISTORY, explain = true) {
+  const { risk, contributions, missing } = scoreRecipient(model, features, explain)
   const { soft, warn, hold } = model.thresholds
 
   // Типичная картина обмана: клиента ведут по телефону или управляют его телефоном удалённо,
@@ -139,7 +154,9 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   if (triangle) reasons.push({ code: 'TRIANGLE', value: null, contribution: null })
   if (repeatTarget) reasons.push({ code: 'REPEAT_TARGET', value: history.otherClients24h, contribution: null })
 
-  if (!history.confirmedLegit) {
+  // Признаки счёта называем причинами, только когда сам счёт заметно рискованный (выше нижнего
+  // порога): у обычного счёта признак может быть чуть выше среднего, но причиной тревоги он не служит.
+  if (!history.confirmedLegit && risk >= soft) {
     reasons.push(
       ...FEATURE_KEYS.filter((key) => contributions[key] >= MIN_CONTRIBUTION)
         .sort((a, b) => contributions[b] - contributions[a])

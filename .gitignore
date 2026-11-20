@@ -10,3 +10,5 @@ service/data/
 build/
 local.properties
 *.log
+.venv/
+ml/challenger/data/

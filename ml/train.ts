@@ -2,13 +2,16 @@
 //   npm run train                          — на синтетических счетах из ml/generate.ts
 //   npm run train -- --data счета.csv       — на размеченных счетах банка (формат — ml/data.ts)
 //   npm run train -- --export образец.csv   — сохранить синтетические счета как образец формата
+//   npm run train -- --import модель.json   — взять готовые таблицы (InterpretML, ml/challenger/export_ebm.py)
+//                                             и только подобрать пороги и посчитать метрики
 //
 // Шаги: обучаем на 60% счетов, подбираем пороги на 20%, считаем метрики на оставшихся 20%,
 // которых модель не видела. Для синтетики рядом считаем потолок — результат идеальной модели.
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
-import { decide, scoreRecipient, type Model } from '../service/src/model.ts'
+import { NO_HISTORY, decide, scoreRecipient, type Model } from '../service/src/model.ts'
+import { expectedLogit } from '../service/src/trees.ts'
 import { idealScore } from './ceiling.ts'
 import { readCsv, writeCsv } from './data.ts'
 import { fitEbm } from './ebm.ts'
@@ -27,6 +30,7 @@ const argument = (name: string) => {
 }
 const dataFile = argument('--data')
 const exportFile = argument('--export')
+const importFile = argument('--import')
 
 // --- данные ---
 
@@ -60,12 +64,49 @@ const positives = labels.reduce((s: number, y) => s + y, 0)
 // Дропперов мало, поэтому их примеры весят больше: оба класса влияют на обучение одинаково.
 const weights = labels.map((y) => (y ? train.length / (2 * positives) : train.length / (2 * (train.length - positives))))
 
-const fit = fitEbm(train.map((a) => FEATURE_KEYS.map((key) => a.features[key])), labels, weights)
-const model: Model = {
-  version: `ebm-${dataFile ? 'bank' : 'synthetic'}-${SEED}`,
-  bias: fit.bias,
-  terms: fit.terms.map((term) => ({ ...term, features: term.features.map((j) => FEATURE_KEYS[j]!) })),
-  thresholds: { soft: 0, warn: 0, hold: 0 },
+// Готовая модель из Python (LightGBM — ml/challenger/export_lgbm.py, InterpretML — export_ebm.py):
+// сначала убеждаемся, что наш код считает по ней ровно то же, что сама библиотека, — и оценку,
+// и вклад каждого признака. Иначе в сервисе окажется не та модель, которую проверяли.
+type Check = { features: RecipientFeatures; logit: number; contributions?: Record<string, number>; expected?: number }
+function importModel(file: string): Model {
+  const source = JSON.parse(readFileSync(file, 'utf8')) as Model & { check?: Check[] }
+  const { check, ...rest } = source
+  const imported = { ...rest, thresholds: { soft: 0, warn: 0, hold: 0 } } as Model
+  delete (imported as { source?: unknown }).source
+  delete (imported as { robustness?: unknown }).robustness
+  if (!check?.length) throw new Error(`В ${file} нет контрольных счетов (check) — модель не проверить`)
+  let worstLogit = 0
+  let worstContribution = 0
+  for (const c of check) {
+    const scored = scoreRecipient(imported, c.features)
+    worstLogit = Math.max(worstLogit, Math.abs(scored.logit - c.logit))
+    // сумма вкладов TreeSHAP + средняя оценка = оценка счёта, и каждый вклад — как у библиотеки
+    if (c.contributions) for (const key of FEATURE_KEYS) worstContribution = Math.max(worstContribution, Math.abs(scored.contributions[key] - c.contributions[key]!))
+  }
+  if (imported.kind === 'trees' && check[0]!.expected !== undefined) {
+    worstContribution = Math.max(worstContribution, Math.abs(expectedLogit(imported) - check[0]!.expected))
+  }
+  // таблицы InterpretML округлены до 6 знаков, отсюда допуск
+  if (worstLogit > 1e-4 || worstContribution > 1e-4) {
+    throw new Error(`Сервис расходится с библиотекой: оценка до ${worstLogit}, вклады признаков до ${worstContribution}`)
+  }
+  console.log(
+    `Импорт ${file}: ${check.length} контрольных счетов совпали с библиотекой — оценка до ${worstLogit.toExponential(1)}` +
+      (imported.kind === 'trees' ? `, вклады признаков (SHAP) до ${worstContribution.toExponential(1)}` : ''),
+  )
+  return imported
+}
+
+let model: Model
+if (importFile) model = importModel(importFile)
+else {
+  const fit = fitEbm(train.map((a) => FEATURE_KEYS.map((key) => a.features[key])), labels, weights)
+  model = {
+    version: `ebm-${dataFile ? 'bank' : 'synthetic'}-${SEED}`,
+    bias: fit.bias,
+    terms: fit.terms.map((term) => ({ ...term, features: term.features.map((j) => FEATURE_KEYS[j]!) })),
+    thresholds: { soft: 0, warn: 0, hold: 0 },
+  }
 }
 
 // --- пороги и метрики ---
@@ -137,7 +178,7 @@ function evaluate(score: Scorer, thresholds: Thresholds, items: Account[], withI
   }
 }
 
-const ebmScore: Scorer = (features) => scoreRecipient(model, features).risk
+const ebmScore: Scorer = (features) => scoreRecipient(model, features, false).risk
 model.thresholds = thresholdsFor(ebmScore)
 
 const result = evaluate(ebmScore, model.thresholds, test, true)
@@ -187,7 +228,7 @@ function transferLevel(withCallSignal: boolean, withKnownRecipient = true, thres
       if (!withCallSignal) context.sender_on_call = null
       // банк не сообщает, что клиент уже переводил получателю: правило смягчения не действует
       if (!withKnownRecipient && context.first_transfer_to_recipient === false) context.first_transfer_to_recipient = null
-      const action = decide(scoring, account.features, context).action
+      const action = decide(scoring, account.features, context, NO_HISTORY, false).action
       group[action]++
       group.total++
       group.amount[action] += context.amount
@@ -251,7 +292,7 @@ console.log(`Данные: ${dataFile ?? 'синтетические'}, счет
 console.log(`Пороги новой модели:`, model.thresholds)
 console.log(`\nОтложенная выборка: ${droppers.length} дропперов, ${honest.length} честных`)
 console.log(`                         AUC    warn: найдено / ложных    hold: найдено / ложных`)
-for (const [name, r] of [['объяснимый бустинг', result], ...(ceiling ? [['потолок (идеал)', ceiling] as const] : [])] as const) {
+for (const [name, r] of [[`модель ${model.kind === 'trees' ? '(деревья)' : '(таблицы)'}`, result], ...(ceiling ? [['потолок (идеал)', ceiling] as const] : [])] as const) {
   const [w, h] = r.account_level
   console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
 }
@@ -263,7 +304,7 @@ console.log('\nПо типам счетов (доля выше порога warn
 for (const k of byKind) console.log(`  ${k.kind.padEnd(15)} ${String(k.count).padStart(6)}  ${pct(k.above_warn).padStart(6)} / ${pct(k.above_hold).padStart(6)}`)
 if (stress) {
   console.log(`\nДропперы стали осторожнее (${stress.droppers} дропперов, пороги прежние)`)
-  for (const [name, r] of [['объяснимый бустинг', stress.model], ['потолок (идеал)', stress.ceiling]] as const) {
+  for (const [name, r] of [[`модель ${model.kind === 'trees' ? '(деревья)' : '(таблицы)'}`, stress.model], ['потолок (идеал)', stress.ceiling]] as const) {
     const [w, h] = r.account_level
     console.log(`  ${name.padEnd(21)} ${r.auc.toFixed(3)}   ${pct(w!.droppers_found).padStart(6)} / ${pct(w!.honest_flagged).padStart(5)}        ${pct(h!.droppers_found).padStart(6)} / ${pct(h!.honest_flagged).padStart(5)}`)
   }

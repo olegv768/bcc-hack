@@ -15,6 +15,10 @@ export type Options = {
   smoothing: number // чем больше, тем осторожнее обновляются клетки с малым числом примеров
   bags: number // сколько раз обучаем на случайных повторных выборках и усредняем: результат устойчивее
   seed: number
+  // Направление риска по каждому признаку: 1 — риск не падает с ростом значения, −1 — не растёт,
+  // 0 — без ограничения. Каждую таблицу после каждого шага приводим к монотонной по этим осям,
+  // поэтому монотонна и вся оценка, а следующие шаги обучения подстраиваются под ограничение.
+  monotone?: number[]
 }
 
 // Подобраны на проверочной выборке (npm run tune): варианты отличались меньше чем на процентный пункт,
@@ -43,6 +47,59 @@ function combinations(count: number, size: number): number[][] {
 }
 
 const sigmoid = (x: number) => 1 / (1 + Math.exp(-x))
+
+// Изотоническая регрессия с весами (объединение соседних нарушителей): ближайшая к values
+// неубывающая (direction 1) или невозрастающая (direction −1) последовательность.
+export function isotonic(values: ArrayLike<number>, weights: ArrayLike<number>, direction: number): number[] {
+  const n = values.length
+  const sign = direction < 0 ? -1 : 1
+  const level: number[] = []
+  const weight: number[] = []
+  const length: number[] = []
+  for (let i = 0; i < n; i++) {
+    level.push(sign * values[i]!)
+    weight.push(weights[i]! + 1e-9)
+    length.push(1)
+    while (level.length > 1 && level[level.length - 2]! > level[level.length - 1]!) {
+      const w = weight[weight.length - 2]! + weight[weight.length - 1]!
+      const v = (level[level.length - 2]! * weight[weight.length - 2]! + level[level.length - 1]! * weight[weight.length - 1]!) / w
+      const l = length[length.length - 2]! + length[length.length - 1]!
+      level.splice(-2, 2, v)
+      weight.splice(-2, 2, w)
+      length.splice(-2, 2, l)
+    }
+  }
+  const result: number[] = []
+  level.forEach((v, b) => {
+    for (let k = 0; k < length[b]!; k++) result.push(sign * v)
+  })
+  return result
+}
+
+// Таблицу (развёрнутую в список, оси — признаки таблицы) приводим к монотонной по осям с ограничением.
+// Для пар и троек — поочерёдно вдоль каждой оси, пока таблица не перестанет меняться.
+function monotonize(table: Float64Array, counts: Float64Array, sizes: number[], directions: number[]) {
+  if (directions.every((d) => !d)) return
+  const strides = sizes.map((_, axis) => sizes.slice(axis + 1).reduce((p, s) => p * s, 1))
+  for (let pass = 0; pass < (sizes.length > 1 ? 20 : 1); pass++) {
+    let change = 0
+    sizes.forEach((size, axis) => {
+      if (!directions[axis]) return
+      const stride = strides[axis]!
+      for (let start = 0; start < table.length; start++) {
+        // начало линии вдоль оси: координата по этой оси равна нулю
+        if (Math.floor(start / stride) % size !== 0) continue
+        const index = Array.from({ length: size }, (_, k) => start + k * stride)
+        const fixed = isotonic(index.map((i) => table[i]!), index.map((i) => counts[i]!), directions[axis]!)
+        index.forEach((i, k) => {
+          change = Math.max(change, Math.abs(fixed[k]! - table[i]!))
+          table[i] = fixed[k]!
+        })
+      }
+    })
+    if (change < 1e-9) break
+  }
+}
 
 export function fitEbm(rows: (number | null)[][], labels: number[], weights: number[], options: Options = DEFAULTS): EbmFit {
   const n = rows.length
@@ -84,9 +141,16 @@ export function fitEbm(rows: (number | null)[][], labels: number[], weights: num
   const startBias = Math.log(positive / (total - positive))
 
   // --- одно обучение на выборке с весами bagWeights; возвращает таблицы ---
+  const directionsOf = terms.map((term) => term.features.map((j) => options.monotone?.[j] ?? 0))
   const fitOnce = (bagWeights: Float64Array) => {
     const scores = terms.map((term) => new Float64Array(term.size))
     const score = new Float64Array(n).fill(startBias)
+    // вес клетки для изотонической регрессии — сколько примеров в неё попало
+    const counts = terms.map((term, t) => {
+      const c = new Float64Array(term.size)
+      if (directionsOf[t]!.some((d) => d)) for (let i = 0; i < n; i++) if (term.cells[i]! >= 0) c[term.cells[i]!]! += bagWeights[i]!
+      return c
+    })
     // таблицы учатся по порядку: сначала отдельные признаки, потом пары и так далее
     for (let order = 1; order <= featureCount; order++) {
       const group = terms.map((term, index) => ({ term, index })).filter((item) => item.term.order === order)
@@ -103,9 +167,15 @@ export function fitEbm(rows: (number | null)[][], labels: number[], weights: num
             hessian[cell]! += bagWeights[i]! * p * (1 - p)
           }
           const table = scores[index]!
+          const before = directionsOf[index]!.some((d) => d) ? Float64Array.from(table) : null
           for (let c = 0; c < term.size; c++) {
             gradient[c] = (options.learningRate * gradient[c]!) / (hessian[c]! + options.smoothing)
             table[c]! += gradient[c]!
+          }
+          if (before) {
+            monotonize(table, counts[index]!, term.edges.map((e) => e.length + 1), directionsOf[index]!)
+            // фактический сдвиг клетки после приведения к монотонной — его и прибавляем к оценкам примеров
+            for (let c = 0; c < term.size; c++) gradient[c] = table[c]! - before[c]!
           }
           for (let i = 0; i < n; i++) {
             const cell = term.cells[i]!

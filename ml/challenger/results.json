@@ -1,0 +1,222 @@
+[
+  {
+    "model": "Прежняя: наш объяснимый бустинг (TypeScript)",
+    "train_seconds": null,
+    "roc_auc": 0.9879254959135448,
+    "pr_auc": 0.8760597339162826,
+    "brier_calibrated": 0.005405678009595079,
+    "ece_calibrated": 0.0009939837143482805,
+    "ece_raw": 0.05091932639999999,
+    "warn_found": 0.8929889298892989,
+    "warn_honest_flagged": 0.021639829535305077,
+    "warn_stress_found": 0.8397129186602871,
+    "warn_stress_honest_flagged": 0.020707792871003983,
+    "warn_collectors_found": 0.8154981549815498,
+    "hold_found": 0.8056580565805658,
+    "hold_honest_flagged": 0.003011202694771225,
+    "hold_stress_found": 0.6555023923444976,
+    "hold_stress_honest_flagged": 0.003549177816361965,
+    "hold_collectors_found": 0.5805658056580566,
+    "monotone_violations": 0.0891875
+  },
+  {
+    "model": "Идеальная модель (потолок)",
+    "train_seconds": null,
+    "roc_auc": 0.9940952221679309,
+    "pr_auc": 0.9168800044033614,
+    "brier_calibrated": 0.004197004863153483,
+    "ece_calibrated": 0.00031800054596972,
+    "ece_raw": 0.00029819780000000644,
+    "warn_found": 0.923739237392374,
+    "warn_honest_flagged": 0.020389414856967873,
+    "warn_stress_found": 0.8779904306220095,
+    "warn_stress_honest_flagged": 0.02032478807067715,
+    "warn_collectors_found": 0.34932349323493234,
+    "hold_found": 0.8548585485854858,
+    "hold_honest_flagged": 0.0035981320335825655,
+    "hold_stress_found": 0.7296650717703349,
+    "hold_stress_honest_flagged": 0.0032683076294556224,
+    "hold_collectors_found": 0.30996309963099633,
+    "monotone_violations": 0.078,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        0.01841943419434192,
+        0.044311193111931046
+      ],
+      "hold": [
+        0.03317958179581795,
+        0.0676814268142682
+      ]
+    }
+  },
+  {
+    "model": "Логистическая регрессия (scikit-learn)",
+    "train_seconds": 0.1,
+    "roc_auc": 0.978748929934498,
+    "pr_auc": 0.7985190501141634,
+    "brier_calibrated": 0.007383035036653413,
+    "ece_calibrated": 0.0013185679324092385,
+    "ece_raw": 0.10426406655064094,
+    "warn_found": 0.8130381303813038,
+    "warn_honest_flagged": 0.02146119886697119,
+    "warn_stress_found": 0.6411483253588517,
+    "warn_stress_honest_flagged": 0.02116739863139618,
+    "warn_collectors_found": 0.9446494464944649,
+    "hold_found": 0.6875768757687577,
+    "hold_honest_flagged": 0.003266389363819634,
+    "hold_stress_found": 0.4449760765550239,
+    "hold_stress_honest_flagged": 0.0027576345623531815,
+    "hold_collectors_found": 0.8425584255842559,
+    "monotone_violations": 0.0,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        -0.10332103321033215,
+        -0.059040590405904037
+      ],
+      "hold": [
+        -0.14391143911439108,
+        -0.0946801968019681
+      ]
+    }
+  },
+  {
+    "model": "LightGBM + Optuna",
+    "train_seconds": 44.3,
+    "roc_auc": 0.9916779483971123,
+    "pr_auc": 0.9068683990559737,
+    "brier_calibrated": 0.004494509167142742,
+    "ece_calibrated": 0.0007810394757498775,
+    "ece_raw": 0.0023794465285991847,
+    "warn_found": 0.9200492004920049,
+    "warn_honest_flagged": 0.019930078852680735,
+    "warn_stress_found": 0.8624401913875598,
+    "warn_stress_honest_flagged": 0.020988663057910327,
+    "warn_collectors_found": 0.7170971709717097,
+    "hold_found": 0.8388683886838868,
+    "hold_honest_flagged": 0.003291908030724475,
+    "hold_stress_found": 0.7177033492822966,
+    "hold_stress_honest_flagged": 0.003012971095904402,
+    "hold_collectors_found": 0.6236162361623616,
+    "monotone_violations": 0.1091875,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        0.013499384993849872,
+        0.040590405904058935
+      ],
+      "hold": [
+        0.01845018450184499,
+        0.04677121771217713
+      ]
+    },
+    "params": {
+      "n_estimators": 600,
+      "learning_rate": 0.011145493609093681,
+      "num_leaves": 43,
+      "min_child_samples": 40,
+      "reg_lambda": 0.368100029825634,
+      "subsample": 0.933007023972924,
+      "scale_pos_weight": 1.6448014130033528
+    },
+    "optuna_trials": 40
+  },
+  {
+    "model": "LightGBM + Optuna, монотонный",
+    "train_seconds": 36.8,
+    "roc_auc": 0.9890137116850791,
+    "pr_auc": 0.8913119762764434,
+    "brier_calibrated": 0.004788292455948891,
+    "ece_calibrated": 0.0007239337669791706,
+    "ece_raw": 0.005360055903909041,
+    "warn_found": 0.9040590405904059,
+    "warn_honest_flagged": 0.021435680200066348,
+    "warn_stress_found": 0.8205741626794258,
+    "warn_stress_honest_flagged": 0.02106526401797569,
+    "warn_collectors_found": 0.9274292742927429,
+    "hold_found": 0.8314883148831488,
+    "hold_honest_flagged": 0.003011202694771225,
+    "hold_stress_found": 0.65311004784689,
+    "hold_stress_honest_flagged": 0.003089572055969768,
+    "hold_collectors_found": 0.8560885608856088,
+    "monotone_violations": 0.0,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        -0.002460024600245969,
+        0.02583025830258312
+      ],
+      "hold": [
+        0.011070110701106972,
+        0.04308118081180817
+      ]
+    },
+    "params": {
+      "n_estimators": 400,
+      "learning_rate": 0.02241207519048224,
+      "num_leaves": 28,
+      "min_child_samples": 87,
+      "reg_lambda": 0.1219960978866647,
+      "subsample": 0.8715005105656799,
+      "scale_pos_weight": 2.219069538279403
+    },
+    "optuna_trials": 40
+  },
+  {
+    "model": "InterpretML EBM (Microsoft)",
+    "train_seconds": 39.4,
+    "roc_auc": 0.9921409097470667,
+    "pr_auc": 0.9071355093237037,
+    "brier_calibrated": 0.004439013332008251,
+    "ece_calibrated": 0.0006556689801531962,
+    "ece_raw": 0.00047203087057618673,
+    "warn_found": 0.915129151291513,
+    "warn_honest_flagged": 0.020185265521729143,
+    "warn_stress_found": 0.8660287081339713,
+    "warn_stress_honest_flagged": 0.019865182310284956,
+    "warn_collectors_found": 0.5547355473554736,
+    "hold_found": 0.8327183271832719,
+    "hold_honest_flagged": 0.0027560160257228163,
+    "hold_stress_found": 0.6973684210526315,
+    "hold_stress_honest_flagged": 0.0030640384026146463,
+    "hold_collectors_found": 0.4747847478474785,
+    "monotone_violations": 0.07475,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        0.008610086100861003,
+        0.03690036900368998
+      ],
+      "hold": [
+        0.0110393603936039,
+        0.04182041820418203
+      ]
+    }
+  },
+  {
+    "model": "InterpretML EBM, монотонная после обучения",
+    "train_seconds": null,
+    "roc_auc": 0.9852140512371516,
+    "pr_auc": 0.8527031759589616,
+    "brier_calibrated": 0.005998984142187636,
+    "ece_calibrated": 0.0013218088237812269,
+    "ece_raw": 0.0018319374121851702,
+    "warn_found": 0.8646986469864698,
+    "warn_honest_flagged": 0.021027381529588895,
+    "warn_stress_found": 0.7272727272727273,
+    "warn_stress_honest_flagged": 0.02055459095087325,
+    "warn_collectors_found": 0.8892988929889298,
+    "hold_found": 0.7576875768757687,
+    "hold_honest_flagged": 0.0033429453645341567,
+    "hold_stress_found": 0.5442583732057417,
+    "hold_stress_honest_flagged": 0.002936370135839036,
+    "hold_collectors_found": 0.8093480934809348,
+    "monotone_violations": 0.0,
+    "diff_vs_current_found_ci": {
+      "warn": [
+        -0.04920049200492005,
+        -0.011070110701106972
+      ],
+      "hold": [
+        -0.07383148831488315,
+        -0.025799507995079962
+      ]
+    }
+  }
+]

@@ -76,7 +76,7 @@ paths:
                   fast_outflow_share_7d: 4.98
                   shared_device_accounts: 2.32
                 missing_features: []
-                model_version: ebm-synthetic-20261112
+                model_version: lgbm-monotone-synthetic-20261112
         '400':
           $ref: '#/components/responses/InvalidRequest'
         '401':
@@ -695,7 +695,7 @@ components:
               type: string
         contributions:
           type: object
-          description: Вклад каждого признака получателя в оценку (в единицах логита). Больше нуля — поднял риск. Поправка за сочетание двух признаков делится между ними поровну.
+          description: Вклад каждого признака получателя в оценку (в единицах логита) — значение Шепли (SHAP). Больше нуля — поднял риск. Вклады в сумме дают «оценка счёта минус средняя оценка»; у непереданного признака вклад ноль.
           additionalProperties:
             type: number
         missing_features:
