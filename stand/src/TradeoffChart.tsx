@@ -12,7 +12,7 @@ type Mark = { label: string; droppers_found: number; honest_flagged: number }
 const HEIGHT = 340
 const MARGIN = { top: 20, right: 24, bottom: 52, left: 52 }
 const MAX_X = 0.1 // показываем до 100 из 1000 зря побеспокоенных: дальше банку неинтересно
-const LINE = '#2f5bff'
+const LINE = '#1d5c86'
 
 // Цена порога: сколько честных клиентов побеспокоим, чтобы заметить столько-то мошенников.
 // Шкалы — «из 1000» и «из 100», как в остальных блоках страницы.
@@ -125,7 +125,7 @@ export function TradeoffChart(props: { points: Point[]; marks: Mark[] }) {
                   <line x1={cx} x2={cx} y1={cy} y2={HEIGHT - MARGIN.bottom} stroke={LINE} strokeOpacity={0.35} strokeDasharray="2 3" />
                   <circle cx={cx} cy={cy} r={6} fill={LINE} stroke="#ffffff" strokeWidth={2.5} />
                   {/* подпись — «таблетка» под точкой */}
-                  <rect x={px} y={cy + 10} width={w} height={24} rx={12} fill="#0b1638" />
+                  <rect x={px} y={cy + 10} width={w} height={24} rx={12} fill="#0c1c26" />
                   <text x={px + w / 2} y={cy + 26} fontSize={12.5} fontWeight={600} textAnchor="middle" fill="#ffffff">
                     {text}
                   </text>

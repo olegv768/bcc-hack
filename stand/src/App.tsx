@@ -97,20 +97,31 @@ function TransferStand() {
   return (
     <>
       <header className="bg-navy text-white">
-        <div className="mx-auto max-w-[1180px] px-4 pt-4 pb-10 sm:px-6">
+        <div className={CONTAINER + ' pt-4 pb-14 sm:pb-16'}>
           <Tabs />
-          <h1 className="mt-8 max-w-[18ch] font-display text-[30px] leading-[1.12] font-semibold sm:text-[46px]">
-            Перевод мошеннику останавливается здесь
-          </h1>
-          <p className="mt-4 max-w-[60ch] text-[17px] text-white/75">
-            Перед отправкой денег банк спрашивает сервис о счёте получателя. Сделайте перевод ниже и посмотрите, что решит сервис.
-          </p>
-          <Rail request={request} response={response} alerts={alerts} />
+          <div className="mt-10 grid items-start gap-x-16 gap-y-10 lg:mt-14 lg:grid-cols-[minmax(0,1fr)_420px]">
+            <div>
+              <h1 className="max-w-[17ch] font-display text-[40px] leading-[1.03] sm:text-[60px]">Перевод мошеннику останавливается здесь</h1>
+              <p className="mt-6 max-w-[52ch] text-[18px] leading-relaxed text-white/75">
+                Перед отправкой денег банк спрашивает сервис о счёте получателя. Сервис отвечает за миллисекунды: пропустить, предупредить
+                клиента или придержать перевод — и объясняет почему.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <a href="#demo" className="rounded-full bg-white px-6 py-3 text-[15px] font-semibold text-navy hover:bg-white/90">
+                  Сделать перевод
+                </a>
+                <a href="#network" className="rounded-full px-6 py-3 text-[15px] font-semibold text-white ring-1 ring-white/30 hover:ring-white/60">
+                  Открыть расследование сети
+                </a>
+              </div>
+            </div>
+            <Rail request={request} response={response} alerts={alerts} />
+          </div>
         </div>
       </header>
 
       <main>
-        <div className={CONTAINER + ' grid gap-x-14 gap-y-12 pt-12 pb-20 lg:grid-cols-[372px_1fr]'}>
+        <div id="demo" className={CONTAINER + ' grid scroll-mt-4 gap-x-14 gap-y-12 pt-14 pb-20 lg:grid-cols-[372px_1fr]'}>
           <Step number={1} sticky title="Приложение банка" note="Выберите получателя и нажмите «Перевести» — запрос уйдёт в сервис оценки.">
             <TransferScreen
               onScored={(req, res) => {
@@ -131,7 +142,7 @@ function TransferStand() {
         </div>
 
         {/* сторона банка: то, что видит не клиент, а сотрудник */}
-        <div className="bg-field">
+        <div className="border-y border-line bg-field">
           <div className={CONTAINER + ' py-16'}>
             <Step
               number={3}
@@ -155,20 +166,12 @@ function TransferStand() {
             <Metrics />
           </div>
         </section>
-
-        <footer className={CONTAINER + ' pt-8 pb-12 text-[14px] text-muted'}>
-          Демонстрационный стенд. Данные синтетические, счета и клиенты вымышлены. Описание API —{' '}
-          <a className="text-accent underline underline-offset-2" href="/api/openapi.yaml" target="_blank" rel="noreferrer">
-            openapi.yaml
-          </a>
-          .
-        </footer>
       </main>
     </>
   )
 }
 
-// Маршрут перевода: точка бежит от приложения к сервису, а если счёт помечен — дальше к аналитику.
+// Путь перевода: станции загораются по мере того, как перевод проходит дальше.
 function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | null; alerts: Alert[] | null }) {
   const { request, response, alerts } = props
   const waiting = alerts?.filter((a) => a.status !== 'closed') ?? []
@@ -180,52 +183,57 @@ function Rail(props: { request: ScoreRequest | null; response: ScoreResponse | n
   if (request?.context.remote_access_active) signals.push('включён удалённый доступ')
 
   return (
-    <ol className="rail mt-10" aria-label="Путь перевода">
-      <li className="rail-line" aria-hidden="true" />
-      {response && <li key={response.request_id} className="rail-pulse" data-run={isFlagged ? 'analyst' : 'service'} aria-hidden="true" />}
+    <div className="rounded-[22px] bg-white/[0.04] p-6 ring-1 ring-white/10 sm:p-8">
+      <h2 className="mb-6 text-[15px] font-medium text-white/60">Путь этого перевода</h2>
+      <ol className="rail" aria-label="Путь перевода">
+        <Station title="Приложение банка" tone={request ? 'on' : undefined} fill={response !== null} run={response?.request_id}>
+          {request ? (
+            <>
+              Перевод {money(request.context.amount)}
+              {signals.length > 0 && <span className="block text-[15px] font-normal text-white/65">{signals.join(', ')}</span>}
+            </>
+          ) : (
+            'Клиент нажимает «Перевести»'
+          )}
+        </Station>
 
-      <Station title="Приложение банка" tone={request ? 'on' : undefined}>
-        {request ? (
-          <>
-            Перевод {money(request.context.amount)}
-            {signals.length > 0 && <span className="block text-white/70">{signals.join(', ')}</span>}
-          </>
-        ) : (
-          'Клиент нажимает «Перевести»'
-        )}
-      </Station>
+        <Station title="Сервис оценки" tone={response?.action} fill={isFlagged} run={response?.request_id} delay={0.5}>
+          {response ? (
+            <>
+              <span className={'font-display text-[26px] leading-tight ' + VERDICT_TONE[response.action]}>{ACTION_LABELS[response.action]}</span>
+              <span className="block text-[15px] font-normal text-white/65">риск {riskText(response.risk)}</span>
+            </>
+          ) : (
+            'Отвечает риском и рекомендацией'
+          )}
+        </Station>
 
-      <Station title="Сервис оценки" tone={response?.action}>
-        {response ? (
-          <>
-            {ACTION_LABELS[response.action]}
-            <span className="block text-white/70">риск {riskText(response.risk)}</span>
-          </>
-        ) : (
-          'Отвечает риском и рекомендацией'
-        )}
-      </Station>
-
-      <Station title="Антифрод-аналитик" tone={isFlagged ? 'on' : undefined}>
-        {alerts ? (
-          <>
-            {isFlagged ? (current?.priority === 'high' ? 'Алерт высокого приоритета' : 'Алерт в очереди') : 'Получает алерты'}
-            <span className="block text-white/70">в очереди: {waiting.length}</span>
-          </>
-        ) : (
-          'Получает алерты'
-        )}
-      </Station>
-    </ol>
+        <Station title="Антифрод-аналитик" tone={isFlagged ? 'on' : undefined}>
+          {alerts ? (
+            <>
+              {isFlagged ? (current?.priority === 'high' ? 'Алерт высокого приоритета' : 'Алерт в очереди') : 'Получает алерты'}
+              <span className="block text-[15px] font-normal text-white/65">в очереди: {waiting.length}</span>
+            </>
+          ) : (
+            'Получает алерты'
+          )}
+        </Station>
+      </ol>
+    </div>
   )
 }
 
-function Station(props: { title: string; tone?: string; children: React.ReactNode }) {
+// цвет решения на тёмном фоне шапки
+const VERDICT_TONE = { allow: 'text-[#7fdcab]', warn: 'text-[#ffc861]', hold: 'text-[#ff8a85]' } as const
+
+function Station(props: { title: string; tone?: string; fill?: boolean; run?: string; delay?: number; children: React.ReactNode }) {
   return (
     <li className="rail-station">
       <span className="rail-node" data-tone={props.tone} aria-hidden="true" />
-      <div className="text-[14px] text-white/60">{props.title}</div>
-      <div className="text-[17px] font-medium" aria-live="polite">
+      {/* key: новый ответ сервиса заново прокладывает путь */}
+      <span key={props.run} className="rail-link" data-fill={props.fill ? 'true' : undefined} style={{ animationDelay: `${props.delay ?? 0}s` }} aria-hidden="true" />
+      <div className="text-[14px] text-white/55">{props.title}</div>
+      <div className="mt-0.5 text-[18px] font-semibold" aria-live="polite">
         {props.children}
       </div>
     </li>

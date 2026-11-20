@@ -96,7 +96,9 @@ export function showWarning(
   sheet.append(cancel)
   backdrop.append(sheet)
   container.append(backdrop)
-  cancel.focus()
+  // фокус на кнопку для клавиатуры и экранного диктора, но страницу не прокручиваем:
+  // окно появляется внутри экрана перевода, который клиент и так видит
+  cancel.focus({ preventScroll: true })
 
   return new Promise<Choice>((resolve) => {
     let timer: ReturnType<typeof setInterval> | undefined

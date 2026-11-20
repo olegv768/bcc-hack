@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { callSignal, remoteAccessSignal, showWarning, type Lang } from '../../sdk/web/dropper-guard.ts'
 import { incoming, score, type IncomingRequest, type IncomingResponse, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { CLIENT_REF, money, P2P_TRADER_REF, PURPOSE_LABELS, SCENARIOS, SENDER_DISPLAY_NAME, TYPICAL_TRANSFER } from './scenarios.ts'
@@ -6,6 +6,10 @@ import type { Purpose } from '../../service/src/features.ts'
 import { NumberInput } from './NumberInput.tsx'
 
 type Outcome = 'sent' | 'cancelled' | 'held'
+
+// При открытии стенда один перевод уходит сам — чтобы сразу было видно решение сервиса и его
+// причины, а не пустую панель. Флаг на уровне модуля: в режиме разработки React вызывает эффект дважды.
+let firstTransferSent = false
 
 const OUTCOME_TEXT: Record<Outcome, { title: string; note: string; className: string }> = {
   sent: { title: 'Перевод отправлен', note: 'Деньги ушли получателю.', className: 'bg-allow-bg text-allow-ink' },
@@ -106,8 +110,15 @@ export function TransferScreen(props: {
     }
   }
 
+  useEffect(() => {
+    if (firstTransferSent) return
+    firstTransferSent = true
+    void submit({ preventDefault() {} } as React.FormEvent)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только при первом показе
+  }, [])
+
   return (
-    <div className="mx-auto w-full max-w-[372px] rounded-[46px] bg-navy p-[10px] shadow-[0_30px_60px_-30px_rgb(11_22_56/0.55)]">
+    <div className="mx-auto w-full max-w-[372px] rounded-[46px] bg-navy p-[10px] shadow-[0_40px_70px_-34px_rgb(12_28_38/0.6)]">
       <div ref={phone} className="relative overflow-hidden rounded-[36px] bg-white">
         <div className="flex items-center justify-between px-6 pt-3 text-[13px] font-semibold" aria-hidden="true">
           <span className="tabular">12:30</span>

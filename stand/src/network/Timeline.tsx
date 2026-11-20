@@ -81,8 +81,8 @@ export function Timeline(props: { graph: Investigation; period: { from?: string;
         onPeriod.current(d3.timeDay.floor(a!).toISOString(), d3.timeDay.ceil(b!).toISOString())
       })
     const g = svg.append('g').call(brush)
-    g.select('.selection').attr('fill', '#2f5bff').attr('fill-opacity', 0.1).attr('stroke', '#2f5bff').attr('stroke-width', 1.5).attr('rx', 6)
-    g.selectAll('.handle').attr('fill', '#2f5bff').attr('rx', 2)
+    g.select('.selection').attr('fill', '#4f8fc0').attr('fill-opacity', 0.1).attr('stroke', '#4f8fc0').attr('stroke-width', 1.5).attr('rx', 6)
+    g.selectAll('.handle').attr('fill', '#4f8fc0').attr('rx', 2)
     // подсказка по дню: оверлей кисти перехватывает мышь, поэтому слушаем его
     g.select('.overlay')
       .on('mousemove.tip', (event: MouseEvent) => {

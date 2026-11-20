@@ -46,6 +46,8 @@ export function GraphCanvas(props: {
     const newRoot = lastRoot.current !== data.root
     lastRoot.current = data.root
     if (newRoot) positions.current.clear()
+    // сотрудник уже сам выбрал вид (колесо, кнопки, перетаскивание) — автоматически не вписываем
+    let touched = !newRoot
     setHover(null)
 
     const byId = new Map<string, SimNode>()
@@ -222,8 +224,24 @@ export function GraphCanvas(props: {
       .force('y', d3.forceY(0).strength(0.04))
       .stop()
 
-    sim.alpha(newRoot ? 1 : 0.5)
-    sim.tick(newRoot ? 300 : 100)
+    if (newRoot) {
+      sim.alpha(1)
+      sim.tick(300)
+    } else {
+      // Раскрытие узла: уже стоящие узлы закрепляем, раскладываются только новые.
+      // Иначе вся карта перетряхивается и сотрудник теряет, где что было.
+      const settled = nodes.filter((n) => positions.current.has(n.id))
+      for (const n of settled) {
+        n.fx = n.x
+        n.fy = n.y
+      }
+      sim.alpha(0.6)
+      sim.tick(120)
+      for (const n of settled) {
+        n.fx = null
+        n.fy = null
+      }
+    }
 
     // дуга: контрольная точка смещена вбок от середины отрезка
     const arc = (e: SimEdge) => {
@@ -323,7 +341,10 @@ export function GraphCanvas(props: {
       .scaleExtent([0.15, 5])
       .on('zoom', (event: d3.D3ZoomEvent<SVGSVGElement, unknown>) => {
         viewport.attr('transform', event.transform.toString())
-        if (event.sourceEvent) setHover(null)
+        if (event.sourceEvent) {
+          setHover(null)
+          touched = true
+        }
         if (Math.abs(event.transform.k - state.current.k) > 0.05) {
           state.current.k = event.transform.k
           paint()
@@ -340,8 +361,14 @@ export function GraphCanvas(props: {
       if (animate && !reduced) svg.transition().duration(450).call(zoom.transform, t)
       else svg.call(zoom.transform, t)
     }
-    state.current.fit = () => fit(true)
-    state.current.zoomBy = (f) => svg.transition().duration(200).call(zoom.scaleBy, f)
+    state.current.fit = () => {
+      touched = true
+      fit(true)
+    }
+    state.current.zoomBy = (f) => {
+      touched = true // кнопки масштаба — тоже ручной выбор вида: автоматическое вписывание его не отменяет
+      svg.transition().duration(200).call(zoom.scaleBy, f)
+    }
     state.current.paint = paint
 
     const showTip = (d: SimNode) => {
@@ -405,14 +432,14 @@ export function GraphCanvas(props: {
     // раскрытие узла: остаёмся там, где сотрудник смотрел
     else svg.call(zoom.transform, d3.zoomTransform(svgEl))
     sim.on('tick', draw)
-    // раскладка ещё немного сжимается после показа: когда она успокоится, вписываем граф заново,
-    // если сотрудник за это время не двигал и не масштабировал его
-    let touched = false
+    // Раскладка ещё немного сжимается после показа: когда она успокоится, вписываем граф заново —
+    // один раз и только если сотрудник за это время не двигал, не масштабировал и не тянул узлы.
     svg.on('wheel.touched mousedown.touched touchstart.touched', () => {
       touched = true
     })
     sim.on('end', () => {
       if (newRoot && !touched) fit(true)
+      touched = true
     })
     if (!reduced) sim.alpha(0.08).restart()
 

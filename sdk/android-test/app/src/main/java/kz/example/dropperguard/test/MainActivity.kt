@@ -376,7 +376,7 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Шрифты те же, что на стенде: Onest для текста, Unbounded для заголовков (лежат в assets/fonts).
+     * Шрифты: Onest для текста, Unbounded для заголовков (лежат в assets/fonts; стенд теперь использует только Onest).
      * Насыщенность задаётся числом; на Android 7 переменные шрифты не поддерживаются — берём системный.
      */
     private fun font(display: Boolean, weight: Int): Typeface {

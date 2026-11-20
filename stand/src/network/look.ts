@@ -4,14 +4,14 @@
 
 import type { EntityType, GraphNode, Role } from '../../../service/src/graph/types.ts'
 
-// цвета статусов проверены на тёмном фоне графа (#0d1530) скриптом проверки палитры
+// цвета статусов проверены скриптом проверки палитры на фоне #0d1530; нынешний фон #0c1c26 почти той же яркости
 export const GRAPH = {
-  bg: '#0d1530',
-  node: '#1d2849',
-  nodeLine: '#3b4a75',
+  bg: '#0c1c26',
+  node: '#1a3241',
+  nodeLine: '#3a5868',
   icon: '#c9d2ea',
   text: '#e6eaf5',
-  pill: 'rgb(13 21 48 / 0.88)',
+  pill: 'rgb(12 28 38 / 0.88)',
   pillLine: 'rgb(255 255 255 / 0.1)',
   edge: 'rgb(150 166 210 / 0.42)',
   edgeStrong: 'rgb(170 184 224 / 0.75)',

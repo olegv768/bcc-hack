@@ -1,4 +1,5 @@
-import model from '../../service/model/model.json'
+// пороги — из ml/metrics.json: их пишет npm run train вместе с моделью, а сама модель (сотни деревьев) стенду не нужна
+import metrics from '../../ml/metrics.json'
 import type { IncomingRequest, IncomingResponse, ScoreRequest, ScoreResponse } from './api.ts'
 import { ContributionChart } from './ContributionChart.tsx'
 import { ACTION_LABELS, riskText } from './scenarios.ts'
@@ -34,7 +35,7 @@ export function ActionBadge(props: { action: keyof typeof BADGE_CLASS }) {
 
 // Шкала риска с порогами модели: видно, насколько оценка далека от границы решения.
 function RiskScale(props: { risk: number }) {
-  const { warn, hold } = model.thresholds
+  const { warn, hold } = metrics.thresholds
   const left = (value: number) => `${value * 100}%`
   return (
     <div>

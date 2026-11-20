@@ -1,30 +1,31 @@
 @import '@fontsource-variable/onest';
-@import '@fontsource-variable/unbounded';
 @import 'tailwindcss';
 
+/* Палитра: глубокие «чернила» с петролевым оттенком, холодная светлая бумага и спокойный стальной
+   акцент. Яркие цвета — только у решений сервиса: пропустить, предупредить, придержать. */
 @theme {
-  --color-paper: #ffffff;
+  --color-paper: #f2f5f4;
   --color-surface: #ffffff;
-  --color-navy: #0b1638;
-  --color-ink: #0e1b3d;
-  --color-ink-2: #46506a;
-  --color-muted: #69728a;
-  --color-line: #e1e5ee;
-  --color-field: #f2f4f8;
-  --color-accent: #2f5bff;
-  --color-raise: #d03b3b;
-  --color-lower: #2a78d6;
-  --color-allow: #0b8250;
-  --color-warn: #f5a300;
-  --color-hold: #d32b31;
-  --color-allow-bg: #d8f4e6;
-  --color-allow-ink: #06603a;
-  --color-warn-bg: #ffedc2;
-  --color-warn-ink: #6b4300;
-  --color-hold-bg: #ffe1e1;
-  --color-hold-ink: #8f1216;
+  --color-navy: #0c1c26;
+  --color-ink: #12212b;
+  --color-ink-2: #44535d;
+  --color-muted: #66737c;
+  --color-line: #d8dfdd;
+  --color-field: #e8eeec;
+  --color-accent: #1d5c86;
+  --color-raise: #c8342f;
+  --color-lower: #2f6f9e;
+  --color-allow: #17794a;
+  --color-warn: #e29a00;
+  --color-hold: #c8282e;
+  --color-allow-bg: #d9f1e3;
+  --color-allow-ink: #0b5a35;
+  --color-warn-bg: #fdecc4;
+  --color-warn-ink: #674100;
+  --color-hold-bg: #fbe0df;
+  --color-hold-ink: #861317;
   --font-sans: 'Onest Variable', 'Segoe UI', system-ui, sans-serif;
-  --font-display: 'Unbounded Variable', 'Onest Variable', system-ui, sans-serif;
+  --font-display: 'Onest Variable', 'Segoe UI', system-ui, sans-serif;
   --font-mono: ui-monospace, 'Cascadia Code', Consolas, monospace;
 }
 
@@ -44,6 +45,14 @@ h1,
 h2,
 h3 {
   text-wrap: balance;
+  letter-spacing: -0.015em;
+}
+
+/* крупные заголовки и цифры: один шрифт, плотнее и тяжелее */
+.font-display {
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  font-feature-settings: 'ss01';
 }
 
 button:focus-visible,
@@ -59,31 +68,31 @@ summary:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-/* --- маршрут перевода в шапке: приложение → сервис → аналитик --- */
+/* --- путь перевода в шапке: приложение → сервис → аналитик, сверху вниз --- */
 
 .rail {
-  position: relative;
   display: grid;
-  gap: 18px;
+  gap: 26px;
 }
 
 .rail-station {
   position: relative;
-  padding-left: 34px;
+  padding-left: 46px;
 }
 
 .rail-node {
   position: absolute;
   left: 0;
-  top: 2px;
-  width: 20px;
-  height: 20px;
+  top: 0;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
-  border: 2px solid rgb(255 255 255 / 0.45);
+  border: 2px solid rgb(255 255 255 / 0.35);
   background: var(--color-navy);
   transition:
-    background-color 0.3s 0.5s,
-    border-color 0.3s 0.5s;
+    background-color 0.3s 0.45s,
+    border-color 0.3s 0.45s,
+    box-shadow 0.3s 0.45s;
 }
 
 .rail-node[data-tone='allow'] {
@@ -97,87 +106,41 @@ summary:focus-visible {
 .rail-node[data-tone='hold'] {
   background: var(--color-hold);
   border-color: var(--color-hold);
+  box-shadow: 0 0 0 6px rgb(200 40 46 / 0.25);
 }
 .rail-node[data-tone='on'] {
   background: #fff;
   border-color: #fff;
 }
 
-.rail-line,
-.rail-pulse {
-  display: none;
+/* связь со следующей станцией: тусклая линия и поверх неё заливка, когда перевод прошёл дальше */
+.rail-station:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 12px;
+  top: 30px;
+  bottom: -22px;
+  width: 2px;
+  background: rgb(255 255 255 / 0.16);
 }
 
-@media (min-width: 768px) {
-  .rail {
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0;
-  }
-  .rail-station {
-    padding: 34px 28px 0 0;
-  }
-  .rail-node {
-    top: 0;
-  }
-  .rail-line {
-    display: block;
-    position: absolute;
-    left: 20px;
-    top: 9px;
-    width: calc(66.666% - 20px);
-    height: 2px;
-    background: rgb(255 255 255 / 0.22);
-  }
-  .rail-pulse {
-    display: block;
-    position: absolute;
-    top: 3px;
-    left: 3px;
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 0 0 5px rgb(255 255 255 / 0.18);
-    opacity: 0;
-  }
-  .rail-pulse[data-run='service'] {
-    animation: to-service 0.6s cubic-bezier(0.5, 0, 0.2, 1) forwards;
-  }
-  .rail-pulse[data-run='analyst'] {
-    animation: to-analyst 1.3s cubic-bezier(0.5, 0, 0.2, 1) forwards;
-  }
+.rail-link {
+  position: absolute;
+  left: 12px;
+  top: 30px;
+  bottom: -22px;
+  width: 2px;
+  background: #fff;
+  transform-origin: top;
+  transform: scaleY(0);
+}
+.rail-link[data-fill='true'] {
+  animation: rail-fill 0.45s cubic-bezier(0.5, 0, 0.2, 1) forwards;
 }
 
-@keyframes to-service {
-  0% {
-    left: 3px;
-    opacity: 1;
-  }
-  85% {
-    opacity: 1;
-  }
-  100% {
-    left: calc(33.333% + 3px);
-    opacity: 0;
-  }
-}
-
-@keyframes to-analyst {
-  0% {
-    left: 3px;
-    opacity: 1;
-  }
-  42%,
-  56% {
-    left: calc(33.333% + 3px);
-    opacity: 1;
-  }
-  92% {
-    opacity: 1;
-  }
-  100% {
-    left: calc(66.666% + 3px);
-    opacity: 0;
+@keyframes rail-fill {
+  to {
+    transform: scaleY(1);
   }
 }
 
@@ -203,7 +166,7 @@ summary:focus-visible {
   height: 22px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: 0 1px 3px rgb(11 22 56 / 0.3);
+  box-shadow: 0 1px 3px rgb(12 28 38 / 0.3);
   transition: transform 0.2s;
 }
 .switch:checked {
@@ -242,13 +205,13 @@ details[open] .details-chevron {
 
 /* точечная сетка, как на холсте: помогает глазу держать масштаб */
 .graph-canvas {
-  background-color: #0d1530;
+  background-color: #0c1c26;
   background-image: radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1.2px);
   background-size: 22px 22px;
 }
 
 .graph-panel {
-  background: rgb(17 26 56 / 0.92);
+  background: rgb(18 36 47 / 0.92);
   border: 1px solid rgb(255 255 255 / 0.09);
   border-radius: 14px;
   box-shadow: 0 12px 28px -14px rgb(0 0 0 / 0.6);
@@ -274,8 +237,9 @@ details[open] .details-chevron {
   .verdict-in {
     animation: none;
   }
-  .rail-pulse {
-    animation: none !important;
+  .rail-link[data-fill='true'] {
+    animation: none;
+    transform: scaleY(1);
   }
   .rail-node,
   .switch,
