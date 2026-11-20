@@ -1,0 +1,9 @@
+# Стенду на Vercel нужны только сервис, модель и стенд. Python-проверка модели и обучение
+# остаются в репозитории, но не уходят на хостинг: иначе Vercel находит requirements.txt
+# и пытается собрать проект как Python.
+ml/challenger/
+.venv/
+.playwright-mcp/
+sdk/android-test/
+CLAUDE.md
+.claude/
