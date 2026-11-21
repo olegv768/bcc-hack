@@ -7,7 +7,8 @@
 //   collectors — дропперы из test стали «сборщиками»: деньги несут 15–40 незнакомых людей;
 //   perturb_*  — первые 4000 счетов test с одним «ухудшенным» признаком (столбец base — номер
 //                исходного счёта в test): по ним видно, падает ли риск, когда признак хуже.
-// Для каждого счёта — оценка выбранной модели (current) и идеальной модели (ideal).
+// Для каждого счёта — оценка выбранной модели (current), рабочей модели сервиса (service)
+// и идеальной модели (ideal).
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { FEATURE_KEYS, type FeatureKey, type RecipientFeatures } from '../service/src/features.ts'
@@ -17,7 +18,11 @@ import { CAREFUL_DROPPER_MIX, generateAccounts, type Account } from './generate.
 import { createRng } from './random.ts'
 
 const SEED = 20261112
-const ACCOUNTS = 200000
+// 2 млн счетов: 1,2 млн на обучение, по 400 тыс. на подбор порогов и итоговую проверку.
+// Меньше для быстрого прогона: --accounts 200000
+const accountsIndex = process.argv.indexOf('--accounts')
+const ACCOUNTS = accountsIndex >= 0 ? Number(process.argv[accountsIndex + 1]) : 2_000_000
+const STRESS_ACCOUNTS = Math.round(ACCOUNTS / 10)
 export const PERTURB: Record<FeatureKey, (v: number) => number> = {
   account_age_days: (v) => Math.round(v * 0.5), // счёт вдвое моложе
   unrelated_senders_7d: (v) => v + 3,
@@ -28,21 +33,22 @@ export const PERTURB: Record<FeatureKey, (v: number) => number> = {
 const modelIndex = process.argv.indexOf('--model')
 const modelFile = modelIndex >= 0 ? process.argv[modelIndex + 1]! : new URL('../service/model/model.json', import.meta.url)
 const model = loadModel(modelFile)
+const service = loadModel(new URL('../service/model/model.json', import.meta.url))
 const accounts = generateAccounts(ACCOUNTS, createRng(SEED))
 const trainEnd = Math.floor(ACCOUNTS * 0.6)
 const validationEnd = Math.floor(ACCOUNTS * 0.8)
 const test = accounts.slice(validationEnd)
-const stress = generateAccounts(40000, createRng(SEED + 2), CAREFUL_DROPPER_MIX)
+const stress = generateAccounts(STRESS_ACCOUNTS, createRng(SEED + 2), CAREFUL_DROPPER_MIX)
 const collectorRng = createRng(SEED + 3)
 const collectors = test.filter((a) => a.is_dropper).map((a) => ({ ...a, features: { ...a.features, unrelated_senders_7d: 15 + Math.floor(collectorRng() * 26) } }))
 
 const split = (i: number) => (i < trainEnd ? 'train' : i < validationEnd ? 'validation' : 'test')
 const line = (part: string, features: RecipientFeatures, label: boolean, kind: string, base = -1) =>
-  [part, ...FEATURE_KEYS.map((key) => features[key]), label ? 1 : 0, kind, base, scoreRecipient(model, features, false).risk.toFixed(6), idealScore(features).toFixed(6)].join(',')
+  [part, ...FEATURE_KEYS.map((key) => features[key]), label ? 1 : 0, kind, base, scoreRecipient(model, features, false).risk.toFixed(6), scoreRecipient(service, features, false).risk.toFixed(6), idealScore(features).toFixed(6)].join(',')
 const row = (a: Account, part: string) => line(part, a.features, a.is_dropper, a.kind)
 
 const rows = [
-  ['split', ...FEATURE_KEYS, 'is_dropper', 'kind', 'base', 'current', 'ideal'].join(','),
+  ['split', ...FEATURE_KEYS, 'is_dropper', 'kind', 'base', 'current', 'service', 'ideal'].join(','),
   ...accounts.map((a, i) => row(a, split(i))),
   ...stress.map((a) => row(a, 'stress')),
   ...collectors.map((a) => row(a, 'collectors')),

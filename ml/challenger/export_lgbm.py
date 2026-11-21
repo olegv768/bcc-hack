@@ -25,8 +25,10 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import math
+import time
 from pathlib import Path
 
 import lightgbm as lgb
@@ -39,8 +41,10 @@ FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d",
 MONOTONE = [-1, 1, 1, 1]
 SEED = 20261112
 TARGET_FPR = {"warn": 0.02, "hold": 0.003}
-TRIALS = 80
 CHECK_ROWS = 500
+# Предел размера модели: всего листьев во всех деревьях. Больше — медленнее объяснение решения
+# в сервисе (значения Шепли считаются по всем деревьям); 30 000 листьев — около 2 мс на запрос.
+MAX_LEAVES = 30_000
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -50,13 +54,15 @@ def recall_at(scores: np.ndarray, y: np.ndarray, fpr: float) -> float:
     return float((scores[y == 1] >= honest[int(len(honest) * fpr)]).mean())
 
 
-def fit(params: dict, x: pd.DataFrame, y: np.ndarray) -> lgb.LGBMClassifier:
+def fit(params: dict, x: pd.DataFrame, y: np.ndarray, seed: int = SEED) -> lgb.LGBMClassifier:
+    params = dict(params)
+    method = params.pop("monotone_constraints_method", "advanced")
     return lgb.LGBMClassifier(
         objective="binary",
         subsample_freq=1,
         monotone_constraints=MONOTONE,
-        monotone_constraints_method="advanced",
-        random_state=SEED,
+        monotone_constraints_method=method,
+        random_state=seed,
         verbose=-1,
         n_jobs=-1,
         **params,
@@ -85,37 +91,80 @@ def compact(node: dict, tree: dict) -> int:
 
 
 def main() -> None:
+    cli = argparse.ArgumentParser()
+    cli.add_argument("--trials", type=int, default=120, help="сколько вариантов настроек пробует Optuna")
+    cli.add_argument("--ensemble", type=int, default=0, help="0 — выбрать по проверочной выборке; N — усреднить N моделей")
+    args = cli.parse_args()
+    TRIALS = args.trials
+    log = (ROOT / "data" / "tuning.log").open("w", encoding="utf-8")
     df = pd.read_csv(ROOT / "data" / "bench.csv")
     train, validation, test = (df[df.split == s].reset_index(drop=True) for s in ("train", "validation", "test"))
     x_train, y_train = train[FEATURES], train["is_dropper"].to_numpy()
     yv = validation["is_dropper"].to_numpy()
 
-    def objective(trial: optuna.Trial) -> float:
-        params = {
-            "n_estimators": trial.suggest_int("n_estimators", 100, 900, step=50),
-            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-            "num_leaves": trial.suggest_int("num_leaves", 7, 127, log=True),
-            "min_child_samples": trial.suggest_int("min_child_samples", 10, 400, log=True),
-            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 30, log=True),
-            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
-            "scale_pos_weight": trial.suggest_float("scale_pos_weight", 1, 60, log=True),
-        }
-        sv = fit(params, x_train, y_train).predict(validation[FEATURES], raw_score=True)
-        # больше всего ценим строгий порог «придержать»: там ошибка дороже
+    # больше всего ценим строгий порог «придержать»: там ошибка дороже
+    def goal(sv: np.ndarray) -> float:
         return 0.6 * recall_at(sv, yv, TARGET_FPR["hold"]) + 0.4 * recall_at(sv, yv, TARGET_FPR["warn"])
 
+    def objective(trial: optuna.Trial) -> float:
+        leaves = trial.suggest_int("num_leaves", 7, 255, log=True)
+        params = {
+            "num_leaves": leaves,
+            # размер модели ограничен: деревьев не больше, чем помещается в MAX_LEAVES листьев
+            "n_estimators": trial.suggest_int("n_estimators", 100, min(3000, MAX_LEAVES // leaves), log=True),
+            "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.2, log=True),
+            "min_child_samples": trial.suggest_int("min_child_samples", 20, 4000, log=True),
+            "reg_lambda": trial.suggest_float("reg_lambda", 1e-3, 100, log=True),
+            "subsample": trial.suggest_float("subsample", 0.5, 1.0),
+            "scale_pos_weight": trial.suggest_float("scale_pos_weight", 1, 60, log=True),
+            "max_bin": trial.suggest_categorical("max_bin", [255, 511, 1023]),
+            "path_smooth": trial.suggest_float("path_smooth", 0, 50),
+            "monotone_constraints_method": trial.suggest_categorical("monotone_constraints_method", ["intermediate", "advanced"]),
+        }
+        started = time.time()
+        value = goal(fit(params, x_train, y_train).predict(validation[FEATURES], raw_score=True))
+        log.write(f"{trial.number:4d} {value:.4f} {time.time() - started:5.1f}s {json.dumps(params)}\n")
+        log.flush()
+        return value
+
     study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED))
+    # первая попытка — прежние настройки, чтобы было с чем сравнивать
+    study.enqueue_trial({
+        "num_leaves": 28, "n_estimators": 400, "learning_rate": 0.0224, "min_child_samples": 87, "reg_lambda": 0.122,
+        "subsample": 0.8715, "scale_pos_weight": 2.219, "max_bin": 255, "path_smooth": 0.0, "monotone_constraints_method": "advanced",
+    })
     study.optimize(objective, n_trials=TRIALS)
     params = study.best_params
     print(f"Optuna, {TRIALS} попыток, лучшая цель на validation {study.best_value:.4f}: {params}")
 
-    model = fit(params, x_train, y_train)
-    dump = model.booster_.dump_model()
+    # Ансамбль: несколько моделей с разными случайными выборками строк, оценки усредняются.
+    # Среднее монотонных моделей монотонно, а значения Шепли среднего — среднее значений Шепли,
+    # поэтому сервис считает ансамбль как одну модель: все деревья подряд, значения листьев делены на N.
+    ensemble_size = args.ensemble
+    models = [fit(params, x_train, y_train)]
+    if not ensemble_size:
+        best_goal, ensemble_size = goal(models[0].predict(validation[FEATURES], raw_score=True)), 1
+        for n in (2, 3, 5):
+            if params["num_leaves"] * params["n_estimators"] * n > MAX_LEAVES * 2:
+                break
+            while len(models) < n:
+                models.append(fit(params, x_train, y_train, seed=SEED + len(models)))
+            value = goal(np.mean([m.predict(validation[FEATURES], raw_score=True) for m in models], axis=0))
+            print(f"Ансамбль из {n}: цель на validation {value:.4f}")
+            if value > best_goal + 0.001:
+                best_goal, ensemble_size = value, n
+    while len(models) < ensemble_size:
+        models.append(fit(params, x_train, y_train, seed=SEED + len(models)))
+    models = models[:ensemble_size]
+    print(f"Выбран ансамбль из {ensemble_size}")
+
     trees = []
-    for info in dump["tree_info"]:
-        tree = {key: [] for key in ("feature", "threshold", "left", "right", "value", "cover")}
-        compact(info["tree_structure"], tree)
-        trees.append(tree)
+    for model in models:
+        for info in model.booster_.dump_model()["tree_info"]:
+            tree = {key: [] for key in ("feature", "threshold", "left", "right", "value", "cover")}
+            compact(info["tree_structure"], tree)
+            tree["value"] = [v / ensemble_size for v in tree["value"]]
+            trees.append(tree)
 
     # сдвиг шкалы к равному весу классов: шансы, выученные с весом scale_pos_weight, пересчитываем
     # к весу «дропперы весят столько же, сколько честные»
@@ -123,8 +172,8 @@ def main() -> None:
     offset = math.log((1 - share) / share / params["scale_pos_weight"])
 
     sample = test.iloc[:CHECK_ROWS]
-    raw = model.predict(sample[FEATURES], raw_score=True)
-    shap = model.predict(sample[FEATURES], pred_contrib=True)
+    raw = np.mean([m.predict(sample[FEATURES], raw_score=True) for m in models], axis=0)
+    shap = np.mean([m.predict(sample[FEATURES], pred_contrib=True) for m in models], axis=0)
     exported = {
         "kind": "trees",
         "version": f"lgbm-monotone-synthetic-{SEED}",
@@ -139,6 +188,8 @@ def main() -> None:
             "monotone_constraints": dict(zip(FEATURES, MONOTONE)),
             "monotone_constraints_method": "advanced",
             "optuna_trials": TRIALS,
+            "ensemble": ensemble_size,
+            "train_accounts": int(len(train)),
         },
         "check": [
             {

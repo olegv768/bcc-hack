@@ -156,6 +156,7 @@ def main() -> None:
 
     # --- текущая модель и идеал (оценки посчитаны в TypeScript) ---
     candidates.append(("Прежняя: наш объяснимый бустинг (TypeScript)", {p: data[p]["current"].to_numpy() for p in parts}, None, {}))
+    candidates.append(("Рабочая модель сервиса: LightGBM монотонный, 120 вариантов Optuna", {p: data[p]["service"].to_numpy() for p in parts}, None, {}))
     candidates.append(("Идеальная модель (потолок)", {p: data[p]["ideal"].to_numpy() for p in parts}, None, {}))
 
     x_train = log_features(data["train"])

@@ -19,7 +19,11 @@ import { CAREFUL_DROPPER_MIX, DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccou
 import { createRng } from './random.ts'
 
 const SEED = 20261112
-const ACCOUNTS = 200000
+// 2 млн счетов: 1,2 млн на обучение, по 400 тыс. на подбор порогов и итоговую проверку.
+// Меньше для быстрого прогона: --accounts 200000
+const accountsIndex = process.argv.indexOf('--accounts')
+const ACCOUNTS = accountsIndex >= 0 ? Number(process.argv[accountsIndex + 1]) : 2_000_000
+const STRESS_ACCOUNTS = Math.round(ACCOUNTS / 10)
 // Допустимая доля честных счетов выше каждого порога (на проверочной выборке).
 const TARGET_FPR = { soft: 0.1, warn: 0.02, hold: 0.003 }
 const BOOTSTRAP_RUNS = 300
@@ -204,7 +208,7 @@ const roc = Array.from({ length: 201 }, (_, i) => {
 // --- проверка на прочность: дропперы стали осторожнее, чем в обучении (только для синтетики) ---
 // Пороги не меняем: так видно, что будет, если мошенники сменят поведение, а модель ещё не переобучили.
 
-const shifted = dataFile ? null : generateAccounts(40000, createRng(SEED + 2), CAREFUL_DROPPER_MIX)
+const shifted = dataFile ? null : generateAccounts(STRESS_ACCOUNTS, createRng(SEED + 2), CAREFUL_DROPPER_MIX)
 const stress = shifted && {
   dropper_mix: Object.fromEntries(CAREFUL_DROPPER_MIX),
   droppers: shifted.filter((a) => a.is_dropper).length,
