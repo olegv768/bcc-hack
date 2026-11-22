@@ -1,18 +1,22 @@
 """Рабочая модель: LightGBM с монотонными ограничениями → формат сервиса.
 
 Запуск (из корня проекта, после `npm run export-bench`):
-    .venv/Scripts/python ml/challenger/export_lgbm.py
-    npm run train -- --import ml/challenger/lgbm-monotone.json
+    .venv/Scripts/python ml/challenger/export_lgbm.py              # подбор настроек и обучение
+    .venv/Scripts/python ml/challenger/export_lgbm.py --from-log   # без подбора: лучший вариант из data/tuning.log
+    npm run train
 
 Почему так. Сравнение претендентов (ml/challenger/benchmark.py) показало: LightGBM и InterpretML
 находят больше дропперов, чем наш прежний бустинг, но без ограничений обе модели решают, что «очень
 много незнакомых отправителей» — признак честного продавца. На синтетике это верно, а в жизни так
 выглядит счёт-сборщик, на который несут деньги десятки жертв. Поэтому риск обязан не падать, когда
-счёт моложе, незнакомых отправителей больше, вывод быстрее и общих устройств больше. LightGBM
-выдерживает это ограничение почти без потерь, наш бустинг и InterpretML — с потерей 4–10 п.п.
+счёт моложе, незнакомых отправителей больше, вывод быстрее, общих устройств больше, счёт дольше
+молчал, в него вошли с нового устройства или больше отправителей связаны с заблокированными счетами.
+LightGBM выдерживает это ограничение почти без потерь, наш бустинг и InterpretML — с потерей 4–10 п.п.
 
 Что делает скрипт:
-1. Подбирает настройки Optuna на validation (test не трогает).
+1. Подбирает настройки Optuna на validation (test не трогает). Каждые 100 деревьев вариант
+   проверяется на пятой части validation; заметно отстающий от середины уже посчитанных
+   останавливается досрочно (после первых 10 вариантов и 300 деревьев).
 2. Обучает модель на train с ограничениями монотонности (метод advanced).
 3. Сохраняет деревья в компактном виде для service/src/trees.ts и контрольные счета: оценку и
    вклад каждого признака (SHAP) по самому LightGBM. ml/train.ts при импорте пересчитывает их своим
@@ -28,6 +32,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import time
 from pathlib import Path
 
@@ -37,13 +42,14 @@ import optuna
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parent
-FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts"]
-MONOTONE = [-1, 1, 1, 1]
+FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts",
+            "idle_days_before_inflow", "new_device_7d", "flagged_linked_senders_7d"]
+MONOTONE = [-1, 1, 1, 1, 1, 1, 1]
 SEED = 20261112
 TARGET_FPR = {"warn": 0.02, "hold": 0.003}
 CHECK_ROWS = 500
 # Предел размера модели: всего листьев во всех деревьях. Больше — медленнее объяснение решения
-# в сервисе (значения Шепли считаются по всем деревьям); 30 000 листьев — около 2 мс на запрос.
+# в сервисе (значения Шепли считаются по всем деревьям); с семью признаками 13 000 листьев — около 3 мс на запрос.
 MAX_LEAVES = 30_000
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
@@ -54,7 +60,7 @@ def recall_at(scores: np.ndarray, y: np.ndarray, fpr: float) -> float:
     return float((scores[y == 1] >= honest[int(len(honest) * fpr)]).mean())
 
 
-def fit(params: dict, x: pd.DataFrame, y: np.ndarray, seed: int = SEED) -> lgb.LGBMClassifier:
+def fit(params: dict, x: pd.DataFrame, y: np.ndarray, seed: int = SEED, threads: int = -1, callbacks: list | None = None) -> lgb.LGBMClassifier:
     params = dict(params)
     method = params.pop("monotone_constraints_method", "advanced")
     return lgb.LGBMClassifier(
@@ -64,9 +70,9 @@ def fit(params: dict, x: pd.DataFrame, y: np.ndarray, seed: int = SEED) -> lgb.L
         monotone_constraints_method=method,
         random_state=seed,
         verbose=-1,
-        n_jobs=-1,
+        n_jobs=threads,
         **params,
-    ).fit(x, y)
+    ).fit(x, y, callbacks=callbacks)
 
 
 def compact(node: dict, tree: dict) -> int:
@@ -94,17 +100,42 @@ def main() -> None:
     cli = argparse.ArgumentParser()
     cli.add_argument("--trials", type=int, default=120, help="сколько вариантов настроек пробует Optuna")
     cli.add_argument("--ensemble", type=int, default=0, help="0 — выбрать по проверочной выборке; N — усреднить N моделей")
+    cli.add_argument("--jobs", type=int, default=1, help="сколько вариантов считать одновременно (ядра делятся между ними; на 12 ядрах один вариант на все ядра быстрее)")
+    cli.add_argument("--from-log", action="store_true", help="не подбирать заново: взять лучший вариант из data/tuning.log (если подбор остановили раньше)")
     args = cli.parse_args()
     TRIALS = args.trials
-    log = (ROOT / "data" / "tuning.log").open("w", encoding="utf-8")
+    threads = max(1, (os.cpu_count() or 4) // args.jobs)
+    log_path = ROOT / "data" / "tuning.log"
+    logged: list[tuple[float, dict]] = []
+    if args.from_log:
+        lines = [line.split(None, 3) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+        TRIALS = len(lines)
+        logged = [(float(v), json.loads(p)) for _, v, _, p in lines if v != "отсечён"]
+    log = open(os.devnull, "w") if args.from_log else log_path.open("w", encoding="utf-8")
     df = pd.read_csv(ROOT / "data" / "bench.csv")
     train, validation, test = (df[df.split == s].reset_index(drop=True) for s in ("train", "validation", "test"))
     x_train, y_train = train[FEATURES], train["is_dropper"].to_numpy()
     yv = validation["is_dropper"].to_numpy()
+    # для промежуточных проверок — каждый пятый счёт validation: быстро, а слабый вариант видно и так
+    x_peek, y_peek = validation[FEATURES].iloc[::5], yv[::5]
 
     # больше всего ценим строгий порог «придержать»: там ошибка дороже
-    def goal(sv: np.ndarray) -> float:
-        return 0.6 * recall_at(sv, yv, TARGET_FPR["hold"]) + 0.4 * recall_at(sv, yv, TARGET_FPR["warn"])
+    def goal(sv: np.ndarray, y: np.ndarray = yv) -> float:
+        return 0.6 * recall_at(sv, y, TARGET_FPR["hold"]) + 0.4 * recall_at(sv, y, TARGET_FPR["warn"])
+
+    # Отсечение слабых вариантов: каждые 100 деревьев вариант проверяется на части validation, и если он
+    # заметно хуже середины уже посчитанных на том же шаге, Optuna его останавливает.
+    def pruning(trial: optuna.Trial):
+        def callback(env) -> None:
+            step = env.iteration + 1
+            if step % 100:
+                return
+            value = goal(env.model.predict(x_peek, num_iteration=step, raw_score=True), y_peek)
+            trial.report(value, step)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+
+        return callback
 
     def objective(trial: optuna.Trial) -> float:
         leaves = trial.suggest_int("num_leaves", 7, 255, log=True)
@@ -122,20 +153,33 @@ def main() -> None:
             "monotone_constraints_method": trial.suggest_categorical("monotone_constraints_method", ["intermediate", "advanced"]),
         }
         started = time.time()
-        value = goal(fit(params, x_train, y_train).predict(validation[FEATURES], raw_score=True))
+        try:
+            model = fit(params, x_train, y_train, threads=threads, callbacks=[pruning(trial)])
+        except optuna.TrialPruned:
+            log.write(f"{trial.number:4d} отсечён {time.time() - started:5.1f}s {json.dumps(params)}\n")
+            log.flush()
+            raise
+        value = goal(model.predict(validation[FEATURES], raw_score=True))
         log.write(f"{trial.number:4d} {value:.4f} {time.time() - started:5.1f}s {json.dumps(params)}\n")
         log.flush()
         return value
 
-    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED))
+    # первые 10 вариантов и первые 300 деревьев каждого не отсекаются
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=10, n_warmup_steps=300)
+    study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED), pruner=pruner)
     # первая попытка — прежние настройки, чтобы было с чем сравнивать
     study.enqueue_trial({
         "num_leaves": 28, "n_estimators": 400, "learning_rate": 0.0224, "min_child_samples": 87, "reg_lambda": 0.122,
         "subsample": 0.8715, "scale_pos_weight": 2.219, "max_bin": 255, "path_smooth": 0.0, "monotone_constraints_method": "advanced",
     })
-    study.optimize(objective, n_trials=TRIALS)
-    params = study.best_params
-    print(f"Optuna, {TRIALS} попыток, лучшая цель на validation {study.best_value:.4f}: {params}")
+    if logged:
+        best_value, params = max(logged, key=lambda item: item[0])
+        print(f"Из журнала подбора: {TRIALS} попыток (отсечено {TRIALS - len(logged)}), лучшая цель на validation {best_value:.4f}: {params}")
+    else:
+        study.optimize(objective, n_trials=TRIALS, n_jobs=args.jobs)
+        params = study.best_params
+        pruned = sum(t.state == optuna.trial.TrialState.PRUNED for t in study.trials)
+        print(f"Optuna, {TRIALS} попыток (отсечено {pruned}), лучшая цель на validation {study.best_value:.4f}: {params}")
 
     # Ансамбль: несколько моделей с разными случайными выборками строк, оценки усредняются.
     # Среднее монотонных моделей монотонно, а значения Шепли среднего — среднее значений Шепли,

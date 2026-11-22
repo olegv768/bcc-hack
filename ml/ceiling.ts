@@ -1,13 +1,13 @@
 // Потолок качества на синтетических данных.
 // Мы сами задали, как генератор создаёт счета (ml/generate.ts), поэтому можем точно посчитать,
 // с какой вероятностью счёт с данными признаками — дроппер. Модель, которая знает эти формулы,
-// лучше всех возможных: ни одна обученная модель по тем же четырём признакам её не обгонит.
+// лучше всех возможных: ни одна обученная модель по тем же признакам её не обгонит.
 // Сравнение с ней показывает, сколько ещё можно выжать настройкой, а сколько упирается в сами признаки.
 //
 // Распределения ниже повторяют ml/generate.ts; при изменении генератора их нужно менять вместе.
 
 import type { RecipientFeatures } from '../service/src/features.ts'
-import { DROPPER_SHARE } from './generate.ts'
+import { DROPPER_SHARE, SIGNALS, type AccountKind } from './generate.ts'
 
 // --- математика распределений ---
 
@@ -95,25 +95,65 @@ function sellerSendersProbability(k: number): number {
 
 type Likelihood = (age: number, senders: number, share: number, devices: number) => number
 
-const HONEST: [number, Likelihood][] = [
-  [0.72, (age, s, o, d) => oldAge(age) * poisson(s, 0.4) * outflow(o, 1.2, 8) * poisson(d, 0.25)],
-  [0.1, (age, s, o, d) => uniformAge(age, 1, 60) * poisson(s, 0.8) * outflow(o, 1.5, 5) * poisson(d, 0.2)],
-  [0.08, (age, s, o, d) => (0.25 * uniformAge(age, 5, 90) + 0.75 * oldAge(age)) * sellerSendersProbability(s) * outflow(o, 2, 6) * poisson(d, 0.3)],
-  [0.07, (age, s, o, d) => oldAge(age) * poisson(s, 0.5) * outflow(o, 6, 2) * poisson(d, 0.2)],
-  [0.03, (age, s, o, d) => oldAge(age) * poisson(s, 0.5) * outflow(o, 1.5, 6) * poisson(d - 1, 2)],
+const HONEST: [number, AccountKind, Likelihood][] = [
+  [0.72, 'regular', (age, s, o, d) => oldAge(age) * poisson(s, 0.4) * outflow(o, 1.2, 8) * poisson(d, 0.25)],
+  [0.1, 'newcomer', (age, s, o, d) => uniformAge(age, 1, 60) * poisson(s, 0.8) * outflow(o, 1.5, 5) * poisson(d, 0.2)],
+  [0.08, 'seller', (age, s, o, d) => (0.25 * uniformAge(age, 5, 90) + 0.75 * oldAge(age)) * sellerSendersProbability(s) * outflow(o, 2, 6) * poisson(d, 0.3)],
+  [0.07, 'transit', (age, s, o, d) => oldAge(age) * poisson(s, 0.5) * outflow(o, 6, 2) * poisson(d, 0.2)],
+  [0.03, 'household', (age, s, o, d) => oldAge(age) * poisson(s, 0.5) * outflow(o, 1.5, 6) * poisson(d - 1, 2)],
 ]
 
-const DROPPERS: [number, Likelihood][] = [
-  [0.5, (age, s, o, d) => uniformAge(age, 1, 30) * poisson(s - 1, 6) * outflow(o, 8, 1.5) * poisson(d, 2.5)],
-  [0.25, (age, s, o, d) => oldAge(age) * poisson(s - 1, 5) * outflow(o, 7, 2) * poisson(d, 1.5)],
-  [0.15, (age, s, o, d) => uniformAge(age, 1, 20) * poisson(s, 1) * outflow(o, 2, 3) * poisson(d, 1.5)],
-  [0.1, (age, s, o, d) => carefulAge(age) * poisson(s, 2) * outflow(o, 3, 3) * poisson(d, 0.5)],
+const DROPPERS: [number, AccountKind, Likelihood][] = [
+  [0.5, 'drop_fresh', (age, s, o, d) => uniformAge(age, 1, 30) * poisson(s - 1, 6) * outflow(o, 8, 1.5) * poisson(d, 2.5)],
+  [0.25, 'drop_bought', (age, s, o, d) => oldAge(age) * poisson(s - 1, 5) * outflow(o, 7, 2) * poisson(d, 1.5)],
+  [0.15, 'drop_first_use', (age, s, o, d) => uniformAge(age, 1, 20) * poisson(s, 1) * outflow(o, 2, 3) * poisson(d, 1.5)],
+  [0.1, 'drop_careful', (age, s, o, d) => carefulAge(age) * poisson(s, 2) * outflow(o, 3, 3) * poisson(d, 0.5)],
 ]
+
+// --- дополнительные сигналы (SIGNALS в ml/generate.ts) ---
+
+// доля Пуассона меньше k
+function poissonBelow(k: number, mean: number): number {
+  let sum = 0
+  for (let i = 0; i < Math.min(k, 200); i++) sum += poisson(i, mean)
+  return sum
+}
+
+// сколько дней счёт молчал: смесь «с открытия», короткой и долгой паузы; не дольше возраста счёта
+function idleProbability(kind: AccountKind, idle: number, age: number): number {
+  const s = SIGNALS[kind].idle
+  if (idle > age || idle < 0) return 0
+  const atAge = idle === age
+  const short = atAge ? 1 - poissonBelow(age, s.shortMean) : poisson(idle, s.shortMean)
+  const longCdf = (x: number) => lognormalCdf(x, s.longMedian, s.longSigma)
+  const long = atAge ? 1 - longCdf(age - 0.5) : longCdf(idle + 0.5) - longCdf(idle - 0.5)
+  return s.sinceOpening * (atAge ? 1 : 0) + s.long * long + (1 - s.sinceOpening - s.long) * short
+}
+
+function binomial(k: number, n: number, p: number): number {
+  if (k < 0 || k > n || !Number.isInteger(k)) return 0
+  if (p === 0) return k === 0 ? 1 : 0
+  return Math.exp(logGamma(n + 1) - logGamma(k + 1) - logGamma(n - k + 1) + k * Math.log(p) + (n - k) * Math.log(1 - p))
+}
+
+// Неизвестный сигнал (null) не меняет вероятность: усредняем по всем его значениям, а их сумма — 1.
+function signalsProbability(kind: AccountKind, f: RecipientFeatures): number {
+  const s = SIGNALS[kind]
+  let p = 1
+  if (f.idle_days_before_inflow !== null && f.idle_days_before_inflow !== undefined) p *= idleProbability(kind, f.idle_days_before_inflow, f.account_age_days!)
+  if (f.new_device_7d !== null && f.new_device_7d !== undefined) p *= f.new_device_7d === 1 ? s.newDevice : 1 - s.newDevice
+  if (f.flagged_linked_senders_7d !== null && f.flagged_linked_senders_7d !== undefined) p *= binomial(f.flagged_linked_senders_7d, f.unrelated_senders_7d!, s.linked)
+  return p
+}
 
 // Точная вероятность того, что счёт с такими признаками — дроппер.
 export function idealScore(features: RecipientFeatures): number {
   const args = [features.account_age_days!, features.unrelated_senders_7d!, features.fast_outflow_share_7d!, features.shared_device_accounts!] as const
-  const mix = (kinds: [number, Likelihood][]) => kinds.reduce((sum, [share, likelihood]) => sum + share * likelihood(...args), 0)
+  const mix = (kinds: [number, AccountKind, Likelihood][]) =>
+    kinds.reduce((sum, [share, kind, likelihood]) => {
+      const base = likelihood(...args)
+      return base > 0 ? sum + share * base * signalsProbability(kind, features) : sum
+    }, 0)
   const dropper = DROPPER_SHARE * mix(DROPPERS)
   const honest = (1 - DROPPER_SHARE) * mix(HONEST)
   return dropper + honest > 0 ? dropper / (dropper + honest) : 0

@@ -4,8 +4,8 @@
 // «оценка этого счёта минус средняя оценка», и каждый вклад — честная доля признака.
 //
 // TreeSHAP — быстрый способ посчитать значения Шепли для игры «оценка, когда известны только эти
-// признаки, а остальные усреднены по обучающим счетам». Признаков у нас четыре, поэтому эти значения
-// проще и быстрее получить прямо: перебрать все 16 наборов известных признаков.
+// признаки, а остальные усреднены по обучающим счетам». Признаков у нас немного, поэтому эти значения
+// проще получить прямо: в каждом дереве перебрать все наборы признаков, которые оно использует.
 // Числа сверены с самим LightGBM: ml/train.ts при импорте модели пересчитывает контрольные счета
 // и останавливается, если хоть один вклад разошёлся.
 //
@@ -102,37 +102,72 @@ function treeDepth(tree: Tree, node = 0): number {
   return tree.feature[node]! < 0 ? 0 : 1 + Math.max(treeDepth(tree, tree.left[node]!), treeDepth(tree, tree.right[node]!))
 }
 
+// Какие признаки встречаются в развилках дерева.
+const usedOf = new WeakMap<TreeModel, number[][]>()
+function treeFeatures(model: TreeModel): number[][] {
+  if (!usedOf.has(model)) usedOf.set(model, model.trees.map((tree) => [...new Set(tree.feature.filter((f) => f >= 0))].sort((a, b) => a - b)))
+  return usedOf.get(model)!
+}
+
+// Вес набора в формуле Шепли: |S|! · (n − |S| − 1)! / n!. Считаем таблицей один раз — внутри
+// перебора наборов это самая частая операция.
+const MAX_PLAYERS = 16
+const FACTORIAL = [1]
+for (let k = 1; k <= MAX_PLAYERS; k++) FACTORIAL.push(FACTORIAL[k - 1]! * k)
+const SHAPLEY_WEIGHT = Array.from({ length: MAX_PLAYERS + 1 }, (_, n) =>
+  Float64Array.from({ length: Math.max(n, 1) }, (_, size) => (n ? (FACTORIAL[size]! * FACTORIAL[n - size - 1]!) / FACTORIAL[n]! : 0)),
+)
+// сколько признаков в наборе (число единичных битов маски)
+const MEMBERS = Uint8Array.from({ length: 1 << 12 }, (_, mask) => {
+  let count = 0
+  for (let m = mask; m; m &= m - 1) count++
+  return count
+})
+
+// Значения Шепли считаем по каждому дереву отдельно и складываем: оценка модели — сумма деревьев,
+// а значение Шепли суммы — сумма значений Шепли. Признак, которого нет в развилках дерева, на это
+// дерево не влияет, и его вклад в дереве — ноль; поэтому наборы перебираем только среди признаков,
+// которые дерево использует (обычно 2–5 из 7). Результат тот же, что при переборе всех наборов.
 export function scoreTrees(model: TreeModel, features: RecipientFeatures) {
   const x = model.features.map((key) => features[key] ?? null)
-  const known = model.features.map((_, j) => j).filter((j) => x[j] !== null)
-  const bitOf = new Int8Array(model.features.length).fill(-1)
-  known.forEach((j, bit) => (bitOf[j] = bit))
-  const sets = 1 << known.length
-
   if (!scratchOf.has(model)) {
     const depth = Math.max(...model.trees.map((tree) => treeDepth(tree))) + 1
     const size = 1 << model.features.length
     scratchOf.set(model, { left: Array.from({ length: depth }, () => new Float64Array(size)), right: Array.from({ length: depth }, () => new Float64Array(size)) })
   }
   const scratch = scratchOf.get(model)!
-  // value[набор] — оценка, когда известны только признаки набора (номер — битовая маска по known)
-  const value = new Float64Array(sets)
-  const start = new Float64Array(sets).fill(1)
-  for (const tree of model.trees) accumulate(tree, x, bitOf, sets, 0, start, 0, scratch, value)
-  for (let m = 0; m < sets; m++) value[m]! += model.offset
-
-  // вклад признака по Шепли: средний прирост оценки, когда признак добавляют к остальным в любом порядке
-  const n = known.length
-  const factorial = (k: number): number => (k <= 1 ? 1 : k * factorial(k - 1))
+  const used = treeFeatures(model)
+  const size = 1 << model.features.length
+  const bitOf = new Int8Array(model.features.length)
+  const known: number[] = []
+  const value = new Float64Array(size)
+  const start = new Float64Array(size).fill(1)
   const phi = model.features.map(() => 0)
-  known.forEach((j, bit) => {
-    for (let mask = 0; mask < sets; mask++) {
-      if (mask & (1 << bit)) continue
-      let size = 0
-      for (let m = mask; m; m &= m - 1) size++
-      phi[j]! += ((factorial(size) * factorial(n - size - 1)) / factorial(n)) * (value[mask | (1 << bit)]! - value[mask]!)
+  let logit = model.offset
+
+  for (let t = 0; t < model.trees.length; t++) {
+    // известные признаки этого дерева — игроки; номер набора — битовая маска по ним
+    known.length = 0
+    bitOf.fill(-1)
+    for (const j of used[t]!) if (x[j] !== null) bitOf[j] = known.push(j) - 1
+    const sets = 1 << known.length
+    // value[набор] — оценка дерева, когда известны только признаки набора
+    value.fill(0, 0, sets)
+    accumulate(model.trees[t]!, x, bitOf, sets, 0, start, 0, scratch, value)
+    logit += value[sets - 1]!
+    // вклад признака по Шепли: средний прирост оценки, когда признак добавляют к остальным в любом порядке
+    const n = known.length
+    const weight = SHAPLEY_WEIGHT[n]!
+    for (let bit = 0; bit < n; bit++) {
+      const flag = 1 << bit
+      let sum = 0
+      for (let mask = 0; mask < sets; mask++) {
+        if (mask & flag) continue
+        sum += weight[MEMBERS[mask]!]! * (value[mask | flag]! - value[mask]!)
+      }
+      phi[known[bit]!]! += sum
     }
-  })
+  }
   const contributions = Object.fromEntries(model.features.map((key, j) => [key, phi[j]!])) as Record<FeatureKey, number>
-  return { logit: value[sets - 1]!, contributions }
+  return { logit, contributions }
 }

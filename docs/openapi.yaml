@@ -594,6 +594,25 @@ components:
           nullable: true
           minimum: 0
           description: В сколько других счетов входили с тех же устройств, что и в этот счёт.
+        idle_days_before_inflow:
+          type: number
+          nullable: true
+          minimum: 0
+          description: |
+            Дополнительный сигнал. Сколько дней подряд на счёте не было операций перед поступлениями последних
+            7 дней. Долгое молчание, а потом поток денег — примета купленного или «спящего» счёта.
+        new_device_7d:
+          type: integer
+          nullable: true
+          enum: [0, 1]
+          description: Дополнительный сигнал. 1 — за 7 дней в счёт входили с нового для него устройства.
+        flagged_linked_senders_7d:
+          type: number
+          nullable: true
+          minimum: 0
+          description: |
+            Дополнительный сигнал (связи в графе переводов). Сколько незнакомых отправителей за 7 дней платили
+            и на счета, которые банк уже заблокировал или пометил как мошеннические.
         p2p_trader_profile:
           type: boolean
           nullable: true
@@ -698,6 +717,33 @@ components:
           description: Вклад каждого признака получателя в оценку (в единицах логита) — значение Шепли (SHAP). Больше нуля — поднял риск. Вклады в сумме дают «оценка счёта минус средняя оценка»; у непереданного признака вклад ноль.
           additionalProperties:
             type: number
+        transfer:
+          type: object
+          nullable: true
+          description: |
+            Оценка перевода целиком (вторая ступень, логистическая регрессия) в единицах логита и её слагаемые.
+            Решение — сравнение score с порогами модели; правила поверх (подтверждённое мошенничество, счёт-мишень,
+            «треугольник», удалённый доступ) могут поднять его. null — в модели нет второй ступени, решают правила.
+          required: [score, parts]
+          properties:
+            score:
+              type: number
+            parts:
+              type: object
+              required: [account, call, first, amount]
+              properties:
+                account:
+                  type: number
+                  description: Вклад оценки счёта получателя.
+                call:
+                  type: number
+                  description: Звонок или удалённый доступ (больше нуля), их нет (меньше нуля), неизвестно (ноль).
+                first:
+                  type: number
+                  description: Новый получатель (больше нуля), клиент уже переводил ему (меньше нуля), неизвестно (ноль).
+                amount:
+                  type: number
+                  description: Сумма относительно обычной для клиента; сумма меньше обычной риск не снижает.
         missing_features:
           type: array
           description: Признаки, которые не были переданы.
@@ -711,7 +757,7 @@ components:
       properties:
         code:
           type: string
-          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, CONFIRMED_FRAUD, REPEAT_TARGET, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT, TRIANGLE]
+          enum: [NEW_ACCOUNT, MANY_UNRELATED_SENDERS, FAST_OUTFLOW, SHARED_DEVICE, IDLE_THEN_ACTIVE, NEW_DEVICE, LINKED_SENDERS, CONFIRMED_FRAUD, REPEAT_TARGET, REMOTE_ACCESS, ON_CALL, FIRST_TRANSFER, UNUSUAL_AMOUNT, TRIANGLE]
         text:
           type: string
           description: Причина на языке из поля lang.

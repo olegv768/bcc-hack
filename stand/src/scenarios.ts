@@ -50,7 +50,7 @@ export const SCENARIOS: Scenario[] = [
     account_id: 'tok_7f3a91',
     first_transfer: false,
     purpose: 'family',
-    features: { account_age_days: 2100, unrelated_senders_7d: 0, fast_outflow_share_7d: 0.08, shared_device_accounts: 0 },
+    features: { account_age_days: 2100, unrelated_senders_7d: 0, fast_outflow_share_7d: 0.08, shared_device_accounts: 0, idle_days_before_inflow: 1, new_device_7d: 0, flagged_linked_senders_7d: 0 },
   },
   {
     id: 'landlord',
@@ -59,7 +59,7 @@ export const SCENARIOS: Scenario[] = [
     account_id: 'tok_c40e22',
     first_transfer: true,
     purpose: 'services',
-    features: { account_age_days: 1200, unrelated_senders_7d: 1, fast_outflow_share_7d: 0.3, shared_device_accounts: 0 },
+    features: { account_age_days: 1200, unrelated_senders_7d: 1, fast_outflow_share_7d: 0.3, shared_device_accounts: 0, idle_days_before_inflow: 3, new_device_7d: 0, flagged_linked_senders_7d: 0 },
   },
   {
     id: 'seller',
@@ -68,7 +68,7 @@ export const SCENARIOS: Scenario[] = [
     account_id: 'tok_19bd05',
     first_transfer: true,
     purpose: 'goods',
-    features: { account_age_days: 700, unrelated_senders_7d: 22, fast_outflow_share_7d: 0.2, shared_device_accounts: 0 },
+    features: { account_age_days: 700, unrelated_senders_7d: 22, fast_outflow_share_7d: 0.2, shared_device_accounts: 0, idle_days_before_inflow: 0, new_device_7d: 0, flagged_linked_senders_7d: 1 },
   },
   {
     id: 'bought',
@@ -77,7 +77,7 @@ export const SCENARIOS: Scenario[] = [
     account_id: 'tok_e8a670',
     first_transfer: true,
     purpose: 'other',
-    features: { account_age_days: 900, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 },
+    features: { account_age_days: 900, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2, idle_days_before_inflow: 140, new_device_7d: 1, flagged_linked_senders_7d: 3 },
   },
   {
     id: 'fresh',
@@ -86,7 +86,7 @@ export const SCENARIOS: Scenario[] = [
     account_id: 'tok_02d9fc',
     first_transfer: true,
     purpose: 'other',
-    features: { account_age_days: 4, unrelated_senders_7d: 8, fast_outflow_share_7d: 0.92, shared_device_accounts: 3 },
+    features: { account_age_days: 4, unrelated_senders_7d: 8, fast_outflow_share_7d: 0.92, shared_device_accounts: 3, idle_days_before_inflow: 4, new_device_7d: 1, flagged_linked_senders_7d: 3 },
   },
 ]
 
@@ -100,7 +100,7 @@ SCENARIOS.push({
   first_transfer: true,
   purpose: 'goods',
   p2p_trader: true,
-  features: { account_age_days: 1600, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.4, shared_device_accounts: 0 },
+  features: { account_age_days: 1600, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.4, shared_device_accounts: 0, idle_days_before_inflow: 0, new_device_7d: 0, flagged_linked_senders_7d: 0 },
 })
 
 export const FEATURE_LABELS: Record<FeatureKey, (value: number) => string> = {
@@ -108,6 +108,9 @@ export const FEATURE_LABELS: Record<FeatureKey, (value: number) => string> = {
   unrelated_senders_7d: (v) => `Незнакомых отправителей за 7 дней: ${v}`,
   fast_outflow_share_7d: (v) => `Уходит со счёта за час: ${Math.round(v * 100)}%`,
   shared_device_accounts: (v) => `Других счетов на тех же устройствах: ${v}`,
+  idle_days_before_inflow: (v) => `Молчал перед поступлениями: ${v} дн.`,
+  new_device_7d: (v) => (v ? 'Вход с нового устройства за 7 дней' : 'Новых устройств за 7 дней нет'),
+  flagged_linked_senders_7d: (v) => `Отправителей, которые платили и на заблокированные счета: ${v}`,
 }
 
 export const ACTION_LABELS = { allow: 'Пропустить', warn: 'Предупредить', hold: 'Придержать' } as const

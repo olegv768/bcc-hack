@@ -37,9 +37,11 @@ from interpret.glassbox import ExplainableBoostingClassifier
 from sklearn.isotonic import IsotonicRegression
 
 ROOT = Path(__file__).resolve().parent
-FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts"]
+FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts",
+            "idle_days_before_inflow", "new_device_7d", "flagged_linked_senders_7d"]
 # моложе счёт, больше незнакомых отправителей, быстрее вывод, больше общих устройств — риск не падает
-MONOTONE = {"account_age_days": -1, "unrelated_senders_7d": 1, "fast_outflow_share_7d": 1, "shared_device_accounts": 1}
+MONOTONE = {"account_age_days": -1, "unrelated_senders_7d": 1, "fast_outflow_share_7d": 1, "shared_device_accounts": 1,
+            "idle_days_before_inflow": 1, "new_device_7d": 1, "flagged_linked_senders_7d": 1}
 SEED = 20261112
 TARGET_FPR = {"warn": 0.02, "hold": 0.003}
 CHECK_ROWS = 500

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { createApp } from './app.ts'
-import { loadModel, scoreRecipient } from './model.ts'
+import { decide, loadModel, modelFeatures } from './model.ts'
 
 const model = loadModel(new URL('../model/model.json', import.meta.url))
 const dataFile = join(mkdtempSync(join(tmpdir(), 'dropper-guard-')), 'flagged.json')
@@ -50,24 +50,45 @@ describe('POST /score', () => {
     expect(body.client_message.title).toBeTruthy()
   })
 
-  test('звонок и новый получатель поднимают предупреждение до приостановки', async () => {
-    // счёт с оценкой между порогами «предупредить» и «придержать» ищем перебором: модель могли переобучить
+  test('звонок, новый получатель и крупная сумма поднимают решение по тому же счёту до приостановки', async () => {
+    // счёт, перевод на который без звонка не придерживается, а под давлением — придерживается,
+    // ищем перебором: модель могли переобучить
     const candidates = [3, 5, 7, 9, 12].flatMap((senders) =>
       [0.5, 0.6, 0.7, 0.8].flatMap((outflow) =>
-        [0, 1, 2].map((devices) => ({ account_age_days: 400, unrelated_senders_7d: senders, fast_outflow_share_7d: outflow, shared_device_accounts: devices })),
+        [0, 1, 2].map((devices) => ({
+          account_age_days: 400,
+          unrelated_senders_7d: senders,
+          fast_outflow_share_7d: outflow,
+          shared_device_accounts: devices,
+          idle_days_before_inflow: null,
+          new_device_7d: null,
+          flagged_linked_senders_7d: null,
+        })),
       ),
     )
-    const middle = candidates.find((f) => {
-      const { risk } = scoreRecipient(model, f)
-      return risk >= model.thresholds.warn && risk < model.thresholds.hold
-    })
+    const middle = candidates.find(
+      (f) => decide(model, f, { ...stranger, remote_access_active: null }).action !== 'hold' && decide(model, f, { ...pressured, remote_access_active: null }).action === 'hold',
+    )
     expect(middle).toBeDefined()
     const borderline = { account_id: 'tok_mid', ...middle! }
     const quiet = await (await score({ recipient: borderline, context: stranger })).json()
     const onCall = await (await score({ recipient: borderline, context: pressured })).json()
     expect(quiet.risk).toBe(onCall.risk)
-    expect(quiet.action).toBe('warn')
+    expect(quiet.action).not.toBe('hold')
     expect(onCall.action).toBe('hold')
+    if (model.transfer) {
+      expect(onCall.transfer.parts.call).toBeGreaterThan(0)
+      expect(onCall.transfer.parts.amount).toBeGreaterThan(quiet.transfer.parts.amount)
+      expect(onCall.transfer.score).toBeGreaterThan(quiet.transfer.score)
+    }
+  })
+
+  test('100 ₸ во время звонка — маме или новому человеку на чистый счёт — проходят', async () => {
+    const small = { amount: 100, sender_on_call: true, first_transfer_to_recipient: false, amount_to_typical_ratio: 0.01 }
+    const mom = await (await score({ recipient: { ...friend, account_id: 'tok_mom' }, context: small })).json()
+    const someone = await (await score({ recipient: { ...friend, account_id: 'tok_someone' }, context: { ...small, first_transfer_to_recipient: true } })).json()
+    expect(mom.action).toBe('allow')
+    expect(someone.action).toBe('allow')
   })
 
   test('звонок, новый получатель и необычная сумма дают предупреждение даже при чистом счёте', async () => {
@@ -87,23 +108,32 @@ describe('POST /score', () => {
     expect(known.action).toBe('allow')
   })
 
-  test('если клиент уже переводил этому получателю, решение по признакам счёта смягчается на ступень', async () => {
+  test('если клиент уже переводил этому получателю, оценка перевода ниже, а удалённый доступ это отменяет', async () => {
     const account = { ...dropper, account_id: 'tok_known_recipient' }
     const first = await (await score({ recipient: account, context: stranger })).json()
     const repeat = await (await score({ recipient: account, context: calm })).json()
     const unknown = await (await score({ recipient: account, context: { ...calm, first_transfer_to_recipient: null } })).json()
-    expect(first.action).toBe('hold')
-    expect(repeat.action).toBe('warn')
-    // банк не сообщил, новый ли получатель: смягчения нет
-    expect(unknown.action).toBe('hold')
-    // удалённый доступ отменяет смягчение
     const remote = await (await score({ recipient: account, context: { ...calm, remote_access_active: true } })).json()
+    expect(first.action).toBe('hold')
     expect(remote.action).toBe('hold')
+    if (model.transfer) {
+      // «уже переводил» снижает оценку, «неизвестно» — посередине: ни смягчения, ни надбавки
+      expect(repeat.transfer.score).toBeLessThan(unknown.transfer.score)
+      expect(unknown.transfer.score).toBeLessThan(first.transfer.score)
+      expect(unknown.transfer.parts.first).toBe(0)
+      // при удалённом доступе «уже переводил» не в счёт: переводит не сам клиент
+      expect(remote.transfer.parts.first).toBe(0)
+      expect(remote.transfer.score).toBeGreaterThan(repeat.transfer.score)
+    } else {
+      expect(repeat.action).toBe('warn')
+      expect(unknown.action).toBe('hold')
+    }
   })
 
   test('отсутствующие признаки не ломают оценку и перечислены в ответе', async () => {
     const body = await (await score({ recipient: { account_id: 'tok_x', account_age_days: 2 }, context: calm })).json()
-    expect(body.missing_features).toEqual(['unrelated_senders_7d', 'fast_outflow_share_7d', 'shared_device_accounts'])
+    expect(body.missing_features).toEqual(modelFeatures(model).filter((key) => key !== 'account_age_days'))
+    expect(body.missing_features).toEqual(expect.arrayContaining(['unrelated_senders_7d', 'fast_outflow_share_7d', 'shared_device_accounts']))
     expect(body.contributions.shared_device_accounts).toBe(0)
   })
 

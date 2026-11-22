@@ -40,10 +40,11 @@ from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_s
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 ROOT = Path(__file__).resolve().parent
-FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts"]
+FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts",
+            "idle_days_before_inflow", "new_device_7d", "flagged_linked_senders_7d"]
 # Направление риска, которого ждёт аналитик: моложе счёт, больше незнакомых отправителей,
 # быстрее вывод, больше общих устройств — риск не должен падать.
-MONOTONE = [-1, 1, 1, 1]
+MONOTONE = [-1, 1, 1, 1, 1, 1, 1]
 TARGET_FPR = {"warn": 0.02, "hold": 0.003}
 BOOTSTRAP = 400
 SEED = 20261112
@@ -58,7 +59,7 @@ def load() -> dict[str, pd.DataFrame]:
 
 def log_features(df: pd.DataFrame) -> np.ndarray:
     x = df[FEATURES].to_numpy(dtype=float)
-    x[:, [0, 1, 3]] = np.log1p(np.maximum(0, x[:, [0, 1, 3]]))
+    x[:, [0, 1, 3, 4, 6]] = np.log1p(np.maximum(0, x[:, [0, 1, 3, 4, 6]]))
     return x
 
 

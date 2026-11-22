@@ -24,6 +24,8 @@ export type ScoreResponse = {
   reasons: { code: string; text: string; contribution: number | null }[]
   client_message: { title: string; body: string } | null
   contributions: Record<FeatureKey, number>
+  // оценка перевода целиком (вторая ступень); null — в модели её нет, решают правила
+  transfer?: { score: number; parts: { account: number; call: number; first: number; amount: number } } | null
   missing_features: FeatureKey[]
   model_version: string
 }

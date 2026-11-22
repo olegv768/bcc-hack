@@ -1,28 +1,32 @@
 // Обучение и проверка модели.
-//   npm run train                          — на синтетических счетах из ml/generate.ts
-//   npm run train -- --data счета.csv       — на размеченных счетах банка (формат — ml/data.ts)
-//   npm run train -- --export образец.csv   — сохранить синтетические счета как образец формата
-//   npm run train -- --import модель.json   — взять готовые таблицы (InterpretML, ml/challenger/export_ebm.py)
-//                                             и только подобрать пороги и посчитать метрики
+//   npm run train                                — рабочая модель: деревья LightGBM (ml/challenger/export_lgbm.py)
+//                                                  на синтетических счетах из ml/generate.ts
+//   npm run train:tables                         — наш объяснимый бустинг на TypeScript, без Python
+//   npm run train:tables -- --data счета.csv     — он же на размеченных счетах банка (формат — ml/data.ts)
+//   npm run train:tables -- --export образец.csv — сохранить синтетические счета как образец формата
 //
-// Шаги: обучаем на 60% счетов, подбираем пороги на 20%, считаем метрики на оставшихся 20%,
-// которых модель не видела. Для синтетики рядом считаем потолок — результат идеальной модели.
+// Шаги: модель счёта учится на 60% счетов, пороги подбираются на 20%, метрики считаются на
+// оставшихся 20%, которых модель не видела. Для синтетики рядом считаем потолок — результат
+// идеальной модели — и учим вторую ступень, оценку перевода целиком, на переводах к счетам из тех же 20%,
+// на которых подбирались пороги.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
-import { NO_HISTORY, decide, scoreRecipient, type Model } from '../service/src/model.ts'
+import { FEATURE_KEYS, type RecipientFeatures, type TransferContext } from '../service/src/features.ts'
+import { NO_HISTORY, TRANSFER_INPUTS, accountFloor, decide, pressureFloor, scoreRecipient, transferInputs, transferScore, type Model, type TransferModel } from '../service/src/model.ts'
 import { expectedLogit } from '../service/src/trees.ts'
 import { idealScore } from './ceiling.ts'
 import { readCsv, writeCsv } from './data.ts'
 import { fitEbm } from './ebm.ts'
 import { CAREFUL_DROPPER_MIX, DROPPER_SHARE, TRANSFER_ASSUMPTIONS, generateAccounts, generateContext, type Account } from './generate.ts'
+import { fitLogistic } from './logistic.ts'
 import { createRng } from './random.ts'
 
 const SEED = 20261112
-// 2 млн счетов: 1,2 млн на обучение, по 400 тыс. на подбор порогов и итоговую проверку.
+// 10 млн счетов: 6 млн на обучение, по 2 млн на подбор порогов и итоговую проверку.
+// Нужно около 8 ГБ памяти и 20–30 минут (npm run train сам разрешает Node столько памяти).
 // Меньше для быстрого прогона: --accounts 200000
 const accountsIndex = process.argv.indexOf('--accounts')
-const ACCOUNTS = accountsIndex >= 0 ? Number(process.argv[accountsIndex + 1]) : 2_000_000
+const ACCOUNTS = accountsIndex >= 0 ? Number(process.argv[accountsIndex + 1]) : 10_000_000
 const STRESS_ACCOUNTS = Math.round(ACCOUNTS / 10)
 // Допустимая доля честных счетов выше каждого порога (на проверочной выборке).
 const TARGET_FPR = { soft: 0.1, warn: 0.02, hold: 0.003 }
@@ -182,7 +186,17 @@ function evaluate(score: Scorer, thresholds: Thresholds, items: Account[], withI
   }
 }
 
-const ebmScore: Scorer = (features) => scoreRecipient(model, features, false).risk
+// Оценку счёта считаем один раз: те же счета проходят через пороги, переводы и варианты строгости.
+const logitCache = new WeakMap<RecipientFeatures, number>()
+const accountLogit = (features: RecipientFeatures) => {
+  let value = logitCache.get(features)
+  if (value === undefined) {
+    value = scoreRecipient(model, features, false).logit
+    logitCache.set(features, value)
+  }
+  return value
+}
+const ebmScore: Scorer = (features) => 1 / (1 + Math.exp(-accountLogit(features)))
 model.thresholds = thresholdsFor(ebmScore)
 
 const result = evaluate(ebmScore, model.thresholds, test, true)
@@ -217,18 +231,145 @@ const stress = shifted && {
   ceiling: evaluate(idealScore, idealThresholds!, shifted),
 }
 
+// --- вторая ступень: оценка перевода целиком (только для синтетики: нужны размеченные переводы) ---
+// Учится на переводах к счетам validation — первая ступень их не видела; test не трогаем.
+// Вместо ручных правил («звонок и новый получатель», «сумма втрое больше обычной») логистическая
+// регрессия сама взвешивает риск счёта и обстоятельства перевода. Пороги подбираем так, чтобы честных
+// переводов она беспокоила столько же, сколько правила: тогда видно, сколько мошеннических переводов
+// она ловит сверх них при той же нагрузке на клиентов.
+
+// на дроппера приходит несколько жертв, чтобы оценка по мошенническим переводам была устойчивее
+const PER_DROPPER = 20
+// доля переводов, где каждое сведение скрыто на обучении: так модель знает, сколько весит «неизвестно»
+const HIDE_SHARE = 0.2
+
+// Правила и вторая ступень принимают решение по уже посчитанному логиту счёта: модель-«константа»
+// с таблицами без клеток даёт ровно этот логит, а сотни деревьев не пересчитываются на каждый перевод.
+const constantModel = (logit: number, thresholds: Thresholds, transfer?: TransferModel): Model => ({ version: model.version, bias: logit, terms: [], thresholds, ...(transfer && { transfer }) })
+
+function fitTransferModel(): TransferModel {
+  const transferRng = createRng(SEED + 11)
+  const rows: number[] = []
+  const labels: number[] = []
+  for (const account of validation) {
+    const logit = accountLogit(account.features)
+    for (let i = 0; i < (account.is_dropper ? PER_DROPPER : 1); i++) {
+      const context = generateContext(account.is_dropper, transferRng)
+      if (transferRng() < HIDE_SHARE) context.sender_on_call = null
+      if (transferRng() < HIDE_SHARE) context.first_transfer_to_recipient = null
+      if (transferRng() < HIDE_SHARE) context.amount_to_typical_ratio = null
+      const inputs = transferInputs(context)
+      rows.push(logit, ...TRANSFER_INPUTS.map((key) => inputs[key]))
+      labels.push(account.is_dropper ? 1 : 0)
+    }
+  }
+  const w = fitLogistic(Float64Array.from(rows), Uint8Array.from(labels), TRANSFER_INPUTS.length + 1)
+  const weights = Object.fromEntries([['account', w[1]!], ...TRANSFER_INPUTS.map((key, j) => [key, w[j + 2]!])]) as TransferModel['weights']
+  // здравый смысл: рискованный счёт, звонок, новый получатель и крупная сумма не могут снижать оценку,
+  // а «неизвестно» лежит между «да» и «нет»
+  const sane = weights.account > 0 && weights.call_yes > 0 && weights.call_no < 0 && weights.first_yes > 0 && weights.first_no < 0 && weights.amount_log >= 0
+  if (!sane) {
+    throw new Error(`Вторая ступень выучила странные веса: ${JSON.stringify(weights)}`)
+  }
+  const honestLogits = validation.filter((a) => !a.is_dropper).map((a) => accountLogit(a.features)).sort((a, b) => a - b)
+  return { bias: w[0]!, weights, thresholds: { warn: 0, hold: 0 }, clean_logit: honestLogits[Math.floor(honestLogits.length / 2)]! }
+}
+
+// Честные переводы validation — всегда одни и те же (одно зерно), на них сравниваем нагрузку.
+// adjust — каких сведений банк не сообщает.
+function honestValidationTransfers(visit: (logit: number, account: Account, context: TransferContext) => void, adjust?: (context: TransferContext) => void) {
+  const transferRng = createRng(SEED + 12)
+  for (const account of validation) {
+    const logit = accountLogit(account.features)
+    for (let i = 0; i < (account.is_dropper ? PER_DROPPER : 1); i++) {
+      const context = generateContext(account.is_dropper, transferRng)
+      if (account.is_dropper) continue
+      adjust?.(context)
+      visit(logit, account, context)
+    }
+  }
+}
+
+type Load = { hold: number; seen: number }
+
+// Сколько честных переводов validation беспокоят правила при данных порогах счёта.
+function rulesLoad(thresholds: Thresholds): Load {
+  let held = 0
+  let seen = 0
+  let total = 0
+  honestValidationTransfers((logit, account, context) => {
+    const action = decide(constantModel(logit, thresholds), account.features, context, NO_HISTORY, false).action
+    if (action === 'hold') held++
+    if (action !== 'allow') seen++
+    total++
+  })
+  return { hold: held / total, seen: seen / total }
+}
+
+// Пороги второй ступени, при которых честных переводов validation беспокоим столько же (load).
+// Перевод, который попадает под страховку (decide: accountFloor, pressureFloor), предупреждение
+// получает всегда, поэтому для порога «предупредить» он считается замеченным при любой оценке.
+function matchLoad(transfer: TransferModel, load: Load, adjust?: (context: TransferContext) => void, thresholds: Thresholds = model.thresholds): TransferModel['thresholds'] {
+  const holdScores: number[] = []
+  const seenScores: number[] = []
+  honestValidationTransfers((logit, _account, context) => {
+    const score = transferScore(transfer, logit, context).score
+    holdScores.push(score)
+    const floored = accountFloor(1 / (1 + Math.exp(-logit)), thresholds) || pressureFloor(context)
+    seenScores.push(floored ? Infinity : score)
+  }, adjust)
+  holdScores.sort((a, b) => b - a)
+  seenScores.sort((a, b) => b - a)
+  const at = (scores: number[], share: number) => round(scores[Math.round(scores.length * share)]!, 4)
+  return { warn: at(seenScores, load.seen), hold: at(holdScores, load.hold) }
+}
+
+const noCallSignal = (context: TransferContext) => {
+  context.sender_on_call = null
+}
+const noKnownRecipient = (context: TransferContext) => {
+  if (context.first_transfer_to_recipient === false) context.first_transfer_to_recipient = null
+}
+
+const transferModel = dataFile ? null : fitTransferModel()
+const baseLoad = transferModel && rulesLoad(model.thresholds)
+if (transferModel && baseLoad) {
+  transferModel.thresholds = matchLoad(transferModel, baseLoad)
+  model.transfer = transferModel
+}
+// Без одного из сведений вторую ступень настраивают заново на ту же нагрузку: так видно, сколько
+// мошеннических переводов это сведение помогает поймать при том же беспокойстве честных клиентов.
+const retuned = (adjust: (context: TransferContext) => void) => transferModel && { ...transferModel, thresholds: matchLoad(transferModel, baseLoad!, adjust) }
+
 // --- переводы: что делает сервис целиком (модель + обстоятельства перевода; только для синтетики) ---
 
-function transferLevel(withCallSignal: boolean, withKnownRecipient = true, thresholds: Thresholds = model.thresholds) {
+// transfer = null — решение по правилам, как без второй ступени
+// Мошенники подстроились, а модель и пороги прежние: обстоятельства мошеннического перевода
+// частично выглядят как у честного.
+type Adapt = (context: TransferContext, rng: () => number) => void
+const ADAPT: Record<'amount' | 'call', Adapt> = {
+  // просят перевести обычную для клиента сумму
+  amount: (context, rng) => {
+    const honest = generateContext(false, rng)
+    context.amount = honest.amount
+    context.amount_to_typical_ratio = honest.amount_to_typical_ratio
+  },
+  // перестали звонить (переписка, заранее подготовленный клиент): на звонке так же редко, как честные
+  call: (context, rng) => {
+    context.sender_on_call = rng() < TRANSFER_ASSUMPTIONS.honest.on_call
+  },
+}
+
+function transferLevel(withCallSignal: boolean, withKnownRecipient = true, thresholds: Thresholds = model.thresholds, transfer: TransferModel | null = model.transfer ?? null, adapt?: Adapt) {
   const transferRng = createRng(SEED + 1)
-  const scoring = { ...model, thresholds }
   const empty = () => ({ allow: 0, warn: 0, hold: 0, total: 0, amount: { allow: 0, warn: 0, hold: 0, total: 0 } })
   const counts = { fraud: empty(), honest: empty() }
   for (const account of test) {
     const group = account.is_dropper ? counts.fraud : counts.honest
-    // на дроппера приходит несколько жертв, чтобы оценка по мошенническим переводам была устойчивее
-    for (let i = 0; i < (account.is_dropper ? 20 : 1); i++) {
-      const context = generateContext(account.is_dropper, transferRng)
+    const scoring = constantModel(accountLogit(account.features), thresholds, transfer ?? undefined)
+    for (let i = 0; i < (account.is_dropper ? PER_DROPPER : 1); i++) {
+      const context: TransferContext = generateContext(account.is_dropper, transferRng)
+      if (adapt && account.is_dropper) adapt(context, transferRng)
       if (!withCallSignal) context.sender_on_call = null
       // банк не сообщает, что клиент уже переводил получателю: правило смягчения не действует
       if (!withKnownRecipient && context.first_transfer_to_recipient === false) context.first_transfer_to_recipient = null
@@ -272,14 +413,41 @@ const metrics = {
     ? null
     : {
         assumptions: TRANSFER_ASSUMPTIONS,
+        // вторая ступень: веса, пороги и сколько честных переводов беспокоили правила на validation
+        transfer_model: transferModel && { ...transferModel, matched_honest_load: baseLoad! },
         with_call_signal: transferLevel(true),
-        without_call_signal: transferLevel(false),
-        // то же, что with_call_signal, но без правила «клиент уже переводил этому получателю»
-        without_known_recipient_rule: transferLevel(true, false),
+        // без сведения пороги второй ступени настроены заново на ту же нагрузку на честных клиентов
+        without_call_signal: transferLevel(false, true, model.thresholds, retuned(noCallSignal)),
+        // то же, что with_call_signal, но банк не сообщает, переводил ли клиент этому получателю раньше
+        without_known_recipient_rule: transferLevel(true, false, model.thresholds, retuned(noKnownRecipient)),
+        // мошенники подстроились, модель и пороги прежние
+        adapted: {
+          usual_amount: transferLevel(true, true, model.thresholds, model.transfer ?? null, ADAPT.amount),
+          no_call: transferLevel(true, true, model.thresholds, model.transfer ?? null, ADAPT.call),
+        },
+        // для сравнения — прежние ручные правила на тех же переводах
+        rules: {
+          with_call_signal: transferLevel(true, true, model.thresholds, null),
+          without_call_signal: transferLevel(false, true, model.thresholds, null),
+          without_known_recipient_rule: transferLevel(true, false, model.thresholds, null),
+          adapted: {
+            usual_amount: transferLevel(true, true, model.thresholds, null, ADAPT.amount),
+            no_call: transferLevel(true, true, model.thresholds, null, ADAPT.call),
+          },
+        },
         // одни и те же переводы при разной строгости порогов: на этом строится расчёт выгоды для банка
         presets: PRESETS.map((preset) => {
           const thresholds = thresholdsFor(ebmScore, preset.fpr)
-          return { id: preset.id, name: preset.name, target_fpr: preset.fpr, thresholds, ...transferLevel(true, true, thresholds) }
+          const transfer = { ...transferModel!, thresholds: matchLoad(transferModel!, rulesLoad(thresholds), undefined, thresholds) }
+          return {
+            id: preset.id,
+            name: preset.name,
+            target_fpr: preset.fpr,
+            thresholds,
+            transfer_thresholds: transfer.thresholds,
+            ...transferLevel(true, true, thresholds, transfer),
+            rules: transferLevel(true, true, thresholds, null),
+          }
         }),
       },
   roc,
@@ -314,21 +482,29 @@ if (stress) {
   }
 }
 if (metrics.transfer_level) {
-  for (const [title, t] of [
-    ['все сигналы', metrics.transfer_level.with_call_signal],
-    ['без сигнала звонка', metrics.transfer_level.without_call_signal],
-    ['без правила «уже переводил получателю»', metrics.transfer_level.without_known_recipient_rule],
+  const tm = metrics.transfer_level.transfer_model!
+  console.log(`\nВторая ступень (оценка перевода): свободный ${tm.bias.toFixed(3)}, веса ${JSON.stringify(Object.fromEntries(Object.entries(tm.weights).map(([k, v]) => [k, round(v, 3)])))}`)
+  console.log(`  пороги ${JSON.stringify(tm.thresholds)}, нагрузка на честных как у правил: придержано ${pct(tm.matched_honest_load.hold)}, замечено ${pct(tm.matched_honest_load.seen)}`)
+  for (const [title, t, r] of [
+    ['все сигналы', metrics.transfer_level.with_call_signal, metrics.transfer_level.rules.with_call_signal],
+    ['без сигнала звонка', metrics.transfer_level.without_call_signal, metrics.transfer_level.rules.without_call_signal],
+    ['без сведений «уже переводил получателю»', metrics.transfer_level.without_known_recipient_rule, metrics.transfer_level.rules.without_known_recipient_rule],
+    ['мошенники просят обычную сумму (пороги прежние)', metrics.transfer_level.adapted.usual_amount, metrics.transfer_level.rules.adapted.usual_amount],
+    ['мошенники перестали звонить (пороги прежние)', metrics.transfer_level.adapted.no_call, metrics.transfer_level.rules.adapted.no_call],
   ] as const) {
     console.log(`\nПереводы, ${title}`)
-    console.log(`  мошеннические: придержано ${pct(t.fraud.hold)}, предупреждение ${pct(t.fraud.warn)}, пропущено ${pct(1 - t.fraud.hold - t.fraud.warn)}`)
-    console.log(`  честные:       придержано ${pct(t.honest.hold)}, предупреждение ${pct(t.honest.warn)}`)
+    for (const [name, x] of [['вторая ступень', t], ['правила', r]] as const) {
+      console.log(`  ${name.padEnd(15)} мошеннические: придержано ${pct(x.fraud.hold)}, предупреждение ${pct(x.fraud.warn)}, пропущено ${pct(1 - x.fraud.hold - x.fraud.warn)}; честные: придержано ${pct(x.honest.hold)}, предупреждение ${pct(x.honest.warn)}`)
+    }
   }
 }
 
 if (metrics.transfer_level) {
   console.log('\nСтрогость порогов (все сигналы)          мошеннические: замечено / по сумме придержано    честные: зря на 10 000')
   for (const p of metrics.transfer_level.presets) {
-    const seen = p.fraud.hold + p.fraud.warn
-    console.log(`  ${p.name.padEnd(12)} ${pct(seen).padStart(26)} / ${pct(p.fraud.hold_amount).padStart(22)}    ${Math.round((p.honest.hold + p.honest.warn) * 10000)}`)
+    for (const [name, x] of [[p.name, p], ['  правила', p.rules]] as const) {
+      const seen = x.fraud.hold + x.fraud.warn
+      console.log(`  ${name.padEnd(12)} ${pct(seen).padStart(26)} / ${pct(x.fraud.hold_amount).padStart(22)}    ${Math.round((x.honest.hold + x.honest.warn) * 10000)}`)
+    }
   }
 }

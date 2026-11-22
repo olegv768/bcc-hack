@@ -27,7 +27,72 @@ export type TableModel = {
   thresholds: { soft: number; warn: number; hold: number }
 }
 
-export type Model = TableModel | TreeModel
+// Вторая ступень — оценка перевода целиком (обучение — ml/train.ts). Это логистическая регрессия:
+// логарифм шансов «перевод мошеннический» = свободный член + вес · логит счёта получателя + вклады
+// обстоятельств перевода. Неизвестное обстоятельство (null) ничего не добавляет: на обучении часть
+// сведений намеренно скрыта, поэтому модель знает, сколько весит «да», «нет» и «неизвестно».
+export const TRANSFER_INPUTS = ['call_yes', 'call_no', 'first_yes', 'first_no', 'amount_known', 'amount_log'] as const
+export type TransferInput = (typeof TRANSFER_INPUTS)[number]
+
+export type TransferModel = {
+  bias: number
+  weights: Record<'account' | TransferInput, number>
+  // пороги оценки перевода: при них честных переводов беспокоим столько же, сколько прежние правила
+  thresholds: { warn: number; hold: number }
+  clean_logit: number // логит обычного честного счёта: столько весит счёт, который аналитик признал честным
+}
+
+// Без transfer решение принимают правила (так работает модель, обученная на счетах банка без переводов).
+export type Model = (TableModel | TreeModel) & { transfer?: TransferModel }
+
+// Обстоятельства перевода в числах для второй ступени.
+export function transferInputs(context: TransferContext): Record<TransferInput, number> {
+  // Телефоном управляют удалённо — то же давление, что и звонок; «уже переводил» тогда не в счёт:
+  // перевод делает не сам клиент.
+  const remote = context.remote_access_active === true
+  const ratio = context.amount_to_typical_ratio
+  const known = ratio !== null && ratio !== undefined
+  return {
+    call_yes: context.sender_on_call === true || remote ? 1 : 0,
+    call_no: context.sender_on_call === false && !remote ? 1 : 0,
+    first_yes: context.first_transfer_to_recipient === true ? 1 : 0,
+    first_no: context.first_transfer_to_recipient === false && !remote ? 1 : 0,
+    amount_known: known ? 1 : 0,
+    // Сумма меньше обычной риск не снижает: иначе мошенник просил бы переводить частями.
+    // Сумма в AMOUNT_RATIO_CAP раз больше обычной и выше весит одинаково: крупные разовые платежи
+    // (залог за квартиру, покупка машины) бывают и у честных клиентов, а одна сумма не должна
+    // придерживать перевод на чистый счёт.
+    amount_log: known ? Math.log(Math.min(AMOUNT_RATIO_CAP, Math.max(1, ratio))) : 0,
+  }
+}
+
+export const AMOUNT_RATIO_CAP = 5
+
+// Страховка по счёту: перевод на счёт, который модель сама считает дроппером (риск выше порога
+// «придержать»), молча не уходит. Жертву могут уговорить платить одному и тому же дропперу много
+// раз — тогда «уже переводил» и обычная сумма не значат, что всё в порядке.
+export function accountFloor(risk: number, thresholds: { hold: number }, history: AccountHistory = NO_HISTORY) {
+  return !history.confirmedLegit && risk >= thresholds.hold
+}
+
+// Страховка по обстоятельствам: новому получателю при удалённом доступе или при звонке и сумме
+// втрое больше обычной — классическая картина «безопасного счёта», так бывает и со свежим счётом
+// дропа, который ещё выглядит чистым. Удалённый доступ в обучающих переводах не встречается
+// (о его доле нет данных), поэтому для него это единственное правило.
+export function pressureFloor(context: TransferContext) {
+  if (context.first_transfer_to_recipient !== true) return false
+  if (context.remote_access_active === true) return true
+  return context.sender_on_call === true && (context.amount_to_typical_ratio ?? 0) >= UNUSUAL_AMOUNT_RATIO
+}
+
+export function transferScore(transfer: TransferModel, accountLogit: number, context: TransferContext) {
+  const inputs = transferInputs(context)
+  const account = transfer.weights.account * accountLogit
+  const call = transfer.weights.call_yes * inputs.call_yes + transfer.weights.call_no * inputs.call_no
+  const first = transfer.weights.first_yes * inputs.first_yes + transfer.weights.first_no * inputs.first_no
+  const amount = transfer.weights.amount_known * inputs.amount_known + transfer.weights.amount_log * inputs.amount_log
+  return { score: transfer.bias + account + call + first + amount, parts: { account, call, first, amount } }
+}
 
 export type Action = 'allow' | 'warn' | 'hold'
 
@@ -36,6 +101,9 @@ export type ReasonCode =
   | 'MANY_UNRELATED_SENDERS'
   | 'FAST_OUTFLOW'
   | 'SHARED_DEVICE'
+  | 'IDLE_THEN_ACTIVE'
+  | 'NEW_DEVICE'
+  | 'LINKED_SENDERS'
   | 'CONFIRMED_FRAUD'
   | 'REPEAT_TARGET'
   | 'ON_CALL'
@@ -60,6 +128,9 @@ const FEATURE_REASON: Record<FeatureKey, ReasonCode> = {
   unrelated_senders_7d: 'MANY_UNRELATED_SENDERS',
   fast_outflow_share_7d: 'FAST_OUTFLOW',
   shared_device_accounts: 'SHARED_DEVICE',
+  idle_days_before_inflow: 'IDLE_THEN_ACTIVE',
+  new_device_7d: 'NEW_DEVICE',
+  flagged_linked_senders_7d: 'LINKED_SENDERS',
 }
 
 // Признак попадает в причины, если заметно поднял оценку (в единицах логита).
@@ -84,16 +155,27 @@ export function binOf(edges: number[], value: number): number {
   return low
 }
 
+// Какие признаки модель вообще использует: модель могли обучить без дополнительных сигналов.
+const usedCache = new WeakMap<Model, FeatureKey[]>()
+export function modelFeatures(model: Model): FeatureKey[] {
+  if (!usedCache.has(model)) {
+    const used = new Set<FeatureKey>(model.kind === 'trees' ? model.features : model.terms.flatMap((term) => term.features))
+    usedCache.set(model, FEATURE_KEYS.filter((key) => used.has(key)))
+  }
+  return usedCache.get(model)!
+}
+
 // explain = false — только оценка, без вкладов признаков: так быстрее при обучении и проверке
 export function scoreRecipient(model: Model, features: RecipientFeatures, explain = true) {
   const known = (key: FeatureKey) => features[key] !== null && features[key] !== undefined
   // непереданный признак ничего не добавляет: это равносильно «как у среднего счёта»
-  const missing = FEATURE_KEYS.filter((key) => !known(key))
+  const missing = modelFeatures(model).filter((key) => !known(key))
   const zeros = () => Object.fromEntries(FEATURE_KEYS.map((key) => [key, 0])) as Record<FeatureKey, number>
 
   if (model.kind === 'trees') {
     const { logit, contributions } = explain ? scoreTrees(model, features) : { logit: logitTrees(model, features), contributions: zeros() }
-    return { risk: 1 / (1 + Math.exp(-logit)), logit, contributions, missing }
+    // у признаков, которых нет в модели, вклад ноль
+    return { risk: 1 / (1 + Math.exp(-logit)), logit, contributions: { ...zeros(), ...contributions }, missing }
   }
 
   let logit = model.bias
@@ -113,7 +195,7 @@ export function scoreRecipient(model: Model, features: RecipientFeatures, explai
 }
 
 export function decide(model: Model, features: RecipientFeatures, context: TransferContext, history: AccountHistory = NO_HISTORY, explain = true) {
-  const { risk, contributions, missing } = scoreRecipient(model, features, explain)
+  const { risk, logit, contributions, missing } = scoreRecipient(model, features, explain)
   const { soft, warn, hold } = model.thresholds
 
   // Типичная картина обмана: клиента ведут по телефону или управляют его телефоном удалённо,
@@ -124,19 +206,30 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
   const unusualAmount = (context.amount_to_typical_ratio ?? 0) >= UNUSUAL_AMOUNT_RATIO
   const repeatTarget = !history.confirmedLegit && history.otherClients24h >= REPEAT_TARGET_CLIENTS
 
-  // Счёт, который аналитик проверил и признал честным, по признакам счёта больше не тревожит;
-  // обстоятельства перевода (звонок, удалённый доступ) продолжают действовать.
-  const accountRisk = history.confirmedLegit ? 0 : risk
-
   let action: Action = 'allow'
-  if (accountRisk >= hold) action = 'hold'
-  else if (accountRisk >= warn) action = underPressure ? 'hold' : 'warn'
-  else if (underPressure && (accountRisk >= soft || unusualAmount || remoteAccess)) action = 'warn'
+  let transfer: ReturnType<typeof transferScore> | null = null
+  if (model.transfer) {
+    // Вторая ступень: счёт, звонок, новый ли получатель и сумма складываются в одну оценку перевода.
+    // Счёт, который аналитик признал честным, весит как обычный честный счёт.
+    const t = model.transfer
+    transfer = transferScore(t, history.confirmedLegit ? Math.min(logit, t.clean_logit) : logit, context)
+    if (transfer.score >= t.thresholds.hold) action = 'hold'
+    else if (transfer.score >= t.thresholds.warn) action = 'warn'
+    // Страховки — как минимум предупреждение, что бы ни сказала оценка перевода:
+    if (action === 'allow' && (accountFloor(risk, model.thresholds, history) || pressureFloor(context))) action = 'warn'
+  } else {
+    // Счёт, который аналитик проверил и признал честным, по признакам счёта больше не тревожит;
+    // обстоятельства перевода (звонок, удалённый доступ) продолжают действовать.
+    const accountRisk = history.confirmedLegit ? 0 : risk
+    if (accountRisk >= hold) action = 'hold'
+    else if (accountRisk >= warn) action = underPressure ? 'hold' : 'warn'
+    else if (underPressure && (accountRisk >= soft || unusualAmount || remoteAccess)) action = 'warn'
 
-  // Клиент уже переводил этому получателю, значит, счёт ему не продиктовали по телефону только что.
-  // Решение по признакам счёта смягчаем на ступень: так реже беспокоим людей, которые платят знакомым.
-  const knownRecipient = context.first_transfer_to_recipient === false && !remoteAccess
-  if (knownRecipient) action = action === 'hold' ? 'warn' : 'allow'
+    // Клиент уже переводил этому получателю, значит, счёт ему не продиктовали по телефону только что.
+    // Решение по признакам счёта смягчаем на ступень: так реже беспокоим людей, которые платят знакомым.
+    const knownRecipient = context.first_transfer_to_recipient === false && !remoteAccess
+    if (knownRecipient) action = action === 'hold' ? 'warn' : 'allow'
+  }
 
   // На счёт за сутки уже шли подозрительные переводы от нескольких клиентов — поднимаем решение на ступень.
   if (repeatTarget) action = action === 'allow' ? 'warn' : 'hold'
@@ -172,7 +265,16 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
     if (unusualAmount) reasons.push({ code: 'UNUSUAL_AMOUNT', value: context.amount_to_typical_ratio, contribution: null })
   }
 
-  return { risk: round(risk, 4), action, reasons, contributions, missing, triangle }
+  return {
+    risk: round(risk, 4),
+    action,
+    reasons,
+    contributions,
+    missing,
+    triangle,
+    // оценка перевода и из чего она сложилась (есть, когда в модели есть вторая ступень)
+    transfer: transfer && { score: round(transfer.score, 2), parts: mapValues(transfer.parts, (v) => round(v, 2)) },
+  }
 }
 
 // Оплата товара или услуги новому получателю, который продаёт криптовалюту на P2P.
@@ -192,4 +294,8 @@ export function riskLevel(model: Model, risk: number): 'low' | 'medium' | 'high'
 function round(value: number, digits: number): number {
   const k = 10 ** digits
   return Math.round(value * k) / k
+}
+
+function mapValues<K extends string>(object: Record<K, number>, f: (v: number) => number): Record<K, number> {
+  return Object.fromEntries(Object.entries(object).map(([k, v]) => [k, f(v as number)])) as Record<K, number>
 }

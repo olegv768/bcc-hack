@@ -5,7 +5,13 @@ export const FEATURE_KEYS = [
   'unrelated_senders_7d', // сколько разных людей без прошлой истории переводов прислали деньги за 7 дней
   'fast_outflow_share_7d', // доля поступлений за 7 дней, ушедшая со счёта в течение часа (0..1)
   'shared_device_accounts', // в сколько других счетов входили с тех же устройств
+  'idle_days_before_inflow', // сколько дней подряд на счёте не было операций перед поступлениями последних 7 дней
+  'new_device_7d', // входили ли в счёт с нового для него устройства за 7 дней (1 — да, 0 — нет)
+  'flagged_linked_senders_7d', // сколько незнакомых отправителей за 7 дней платили и на счета, заблокированные банком
 ] as const
+
+// Первые четыре признака — базовые, остальные банк может не передавать: модель обходится без них.
+export const BASE_FEATURE_KEYS = FEATURE_KEYS.slice(0, 4)
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number]
 
@@ -13,7 +19,7 @@ export type FeatureKey = (typeof FEATURE_KEYS)[number]
 export type RecipientFeatures = Record<FeatureKey, number | null>
 
 // Счётчики и возраст сжимаем логарифмом: разница между 1 и 10 днями важнее, чем между 1000 и 1010.
-const LOG_SCALED: FeatureKey[] = ['account_age_days', 'unrelated_senders_7d', 'shared_device_accounts']
+const LOG_SCALED: FeatureKey[] = ['account_age_days', 'unrelated_senders_7d', 'shared_device_accounts', 'idle_days_before_inflow', 'flagged_linked_senders_7d']
 
 export function transform(key: FeatureKey, value: number): number {
   return LOG_SCALED.includes(key) ? Math.log1p(Math.max(0, value)) : Math.min(1, Math.max(0, value))

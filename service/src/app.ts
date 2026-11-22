@@ -28,6 +28,10 @@ const ScoreRequest = z.object({
     unrelated_senders_7d: feature(100000),
     fast_outflow_share_7d: feature(1),
     shared_device_accounts: feature(100000),
+    // необязательные сигналы: без них модель работает по четырём базовым признакам
+    idle_days_before_inflow: feature(40000),
+    new_device_7d: z.union([z.literal(0), z.literal(1)]).nullable().default(null),
+    flagged_linked_senders_7d: feature(100000),
     // банк видит, что получатель продаёт криптовалюту на P2P-площадках
     p2p_trader_profile: z.boolean().nullable().default(null),
   }),
@@ -202,6 +206,8 @@ export function createApp(options: {
       client_message: options.shadow ? null : clientMessage(result.action, { onCall: context.sender_on_call === true, remoteAccess: context.remote_access_active === true, triangle: result.triangle }, lang),
       // вклад каждого признака в оценку — чтобы аналитик видел, из чего она сложилась
       contributions: Object.fromEntries(FEATURE_KEYS.map((key) => [key, Math.round(result.contributions[key] * 100) / 100])),
+      // оценка перевода целиком и её слагаемые: счёт получателя, звонок, новый ли получатель, сумма
+      transfer: result.transfer,
       missing_features: result.missing,
       model_version: model.version,
     })

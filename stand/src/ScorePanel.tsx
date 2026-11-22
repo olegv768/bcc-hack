@@ -2,6 +2,7 @@
 import metrics from '../../ml/metrics.json'
 import type { IncomingRequest, IncomingResponse, ScoreRequest, ScoreResponse } from './api.ts'
 import { ContributionChart } from './ContributionChart.tsx'
+import { TransferChart } from './TransferChart.tsx'
 import { ACTION_LABELS, riskText } from './scenarios.ts'
 
 const BADGE_CLASS = {
@@ -183,9 +184,16 @@ export function ScorePanel(props: {
         </div>
 
         <div>
-          <h3 className="mb-1 text-[19px] font-semibold">Из чего сложилась оценка</h3>
+          <h3 className="mb-1 text-[19px] font-semibold">Из чего сложилась оценка счёта</h3>
           <ContributionChart contributions={response.contributions} features={features} />
         </div>
+
+        {response.transfer && (
+          <div>
+            <h3 className="mb-1 text-[19px] font-semibold">Оценка перевода целиком</h3>
+            <TransferChart transfer={response.transfer} context={request.context} />
+          </div>
+        )}
 
         <details className="rounded-[16px] bg-field">
           <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[16px] px-4 py-3 text-[15px] font-medium [&::-webkit-details-marker]:hidden">

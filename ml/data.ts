@@ -1,9 +1,11 @@
 // Чтение и запись размеченных счетов в CSV — чтобы обучить и проверить модель на данных банка.
-// Колонки: четыре признака счёта и is_dropper (1 — дроппер, 0 — нет). Пустая ячейка — признак неизвестен.
+// Колонки: четыре базовых признака счёта и is_dropper (1 — дроппер, 0 — нет). Пустая ячейка — признак неизвестен.
+// Колонки дополнительных сигналов (idle_days_before_inflow, new_device_7d, flagged_linked_senders_7d)
+// необязательны: если их нет, сигналы считаются неизвестными.
 // Необязательные колонки account_id и kind (тип счёта для разбивки метрик).
 
 import { readFileSync, writeFileSync } from 'node:fs'
-import { FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
+import { BASE_FEATURE_KEYS, FEATURE_KEYS, type RecipientFeatures } from '../service/src/features.ts'
 import type { Account } from './generate.ts'
 
 const COLUMNS = ['account_id', ...FEATURE_KEYS, 'is_dropper', 'kind']
@@ -18,10 +20,10 @@ export function readCsv(file: string): Account[] {
   // разделитель — запятая или точка с запятой (так сохраняет Excel с русскими настройками)
   const separator = lines[0]!.includes(';') ? ';' : ','
   const header = lines[0]!.split(separator).map((name) => name.trim())
-  for (const required of [...FEATURE_KEYS, 'is_dropper']) {
+  for (const required of [...BASE_FEATURE_KEYS, 'is_dropper']) {
     if (!header.includes(required)) throw new Error(`В файле ${file} нет колонки ${required}`)
   }
-  const at = (cells: string[], name: string) => cells[header.indexOf(name)]?.trim() ?? ''
+  const at = (cells: string[], name: string) => (header.includes(name) ? (cells[header.indexOf(name)]?.trim() ?? '') : '')
 
   return lines.slice(1).map((line, i) => {
     const cells = line.split(separator)
