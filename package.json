@@ -12,6 +12,7 @@
     "tune": "tsx ml/tune.ts",
     "export-bench": "node --max-old-space-size=8000 --import tsx ml/export-bench.ts",
     "shadow-report": "tsx ml/shadow-report.ts",
+    "mass-check": "node --import tsx ml/mass-check.ts",
     "bench": "tsx service/bench.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

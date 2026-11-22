@@ -195,7 +195,7 @@ service/src/   сервис: app.ts (HTTP), model.ts (оценка и решен
 service/src/graph/  расследование сети: investigate.ts (граф, роли, находки), demo-source.ts (демонстрационные данные), routes.ts (HTTP)
 service/src/trees.ts  деревья LightGBM и вклады признаков (значения Шепли)
 service/model/ model.json — модель и её пороги
-ml/            generate.ts (синтетические данные), ceiling.ts (потолок), train.ts (пороги, вторая ступень, метрики), logistic.ts (логистическая регрессия), ebm.ts (бустинг на TypeScript для данных банка), data.ts (CSV), metrics.json
+ml/            generate.ts (синтетические данные), ceiling.ts (потолок), train.ts (пороги, вторая ступень, метрики), logistic.ts (логистическая регрессия), mass-check.ts (массовая проверка), ebm.ts (бустинг на TypeScript для данных банка), data.ts (CSV), metrics.json
 ml/challenger/ Python: export_lgbm.py (обучение рабочей модели), boosters.py (XGBoost и CatBoost), benchmark.py (прежнее сравнение с претендентами), results*.json
 sdk/           клиентский модуль: web/, android/, ios/; android-test/ — приложение для проверки на телефоне
 stand/         стенд (React, Vite, D3); network/ — вкладка Network Investigation
@@ -205,5 +205,5 @@ docs/          OpenAPI, интеграция, метрики, проверка �
 Команды: `npm run dev` — сервис и стенд; `npm run service` — только сервис; `npm run train` —
 загрузить рабочую модель, сверить её с LightGBM, подобрать пороги и пересчитать метрики;
 `npm run train:tables` — обучить бустинг на TypeScript (с `-- --data счета.csv` — на данных банка);
-`npm run export-bench` — выгрузить счета для сравнения моделей; `npm run bench` — замер скорости сервиса; `npm run shadow-report` — итоги пилота в теневом режиме; `npm test` — тесты; `npm run build` — проверка типов и
+`npm run export-bench` — выгрузить счета для сравнения моделей; `npm run bench` — замер скорости сервиса; `npm run shadow-report` — итоги пилота в теневом режиме; `npm run mass-check` — прогнать 3 млрд переводов через решение сервиса; `npm test` — тесты; `npm run build` — проверка типов и
 сборка стенда.
