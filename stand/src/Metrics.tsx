@@ -207,13 +207,6 @@ export function Metrics() {
               ))}
             </tbody>
           </table>
-          <p className="mt-4 text-[14px] text-muted">
-            Здесь заложены допущения, а не измерения: {per(transfers.assumptions.fraud.on_call, 100)} из 100 обманутых клиентов переводят во
-            время звонка и {per(transfers.assumptions.fraud.first_transfer, 100)} из 100 — впервые этому получателю; среди честных переводов
-            на звонке {per(transfers.assumptions.honest.on_call, 100)} из 100, новому получателю —{' '}
-            {per(transfers.assumptions.honest.first_transfer, 100)} из 100. Настоящие числа банк узнает на своих данных. В строках, где
-            мошенники подстроились, модель и пороги прежние: так видно, что будет до переобучения.
-          </p>
         </div>
       </div>
     </div>
