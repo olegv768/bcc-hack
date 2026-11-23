@@ -40,7 +40,7 @@ describe('POST /score', () => {
     expect(body.client_message).toBeNull()
   })
 
-  test('перевод на счёт с признаками дроппера придерживается, причины названы словами', async () => {
+  test('перевод на счёт с признаками дроппера приостанавливается, причины названы словами', async () => {
     const body = await (await score({ recipient: dropper, context: pressured })).json()
     expect(body.action).toBe('hold')
     expect(body.risk_level).toBe('high')
@@ -51,7 +51,7 @@ describe('POST /score', () => {
   })
 
   test('звонок, новый получатель и крупная сумма поднимают решение по тому же счёту до приостановки', async () => {
-    // счёт, перевод на который без звонка не придерживается, а под давлением — придерживается,
+    // счёт, перевод на который без звонка не приостанавливается, а под давлением — приостанавливается,
     // ищем перебором: модель могли переобучить
     const candidates = [3, 5, 7, 9, 12].flatMap((senders) =>
       [0.5, 0.6, 0.7, 0.8].flatMap((outflow) =>
@@ -173,7 +173,7 @@ describe('память о счёте', () => {
     fetch(`${url}/alerts/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
   const transit = { account_age_days: 900, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 }
 
-  test('после подтверждения мошенничества любой перевод на этот счёт придерживается', async () => {
+  test('после подтверждения мошенничества любой перевод на этот счёт приостанавливается', async () => {
     const first = await (await score({ recipient: { ...dropper, account_id: 'tok_known' }, context: pressured })).json()
     await patch(first.alert_id, { status: 'closed', resolution: 'fraud' })
 
@@ -227,7 +227,7 @@ describe('память о счёте', () => {
 })
 
 describe('очередь алертов для аналитика', () => {
-  test('придержанный перевод создаёт алерт высокого приоритета с триггерами, суммой и псевдонимом клиента', async () => {
+  test('приостановленный перевод создаёт алерт высокого приоритета с триггерами, суммой и псевдонимом клиента', async () => {
     const scored = await (await score({ transfer_id: 'tr_1', client_ref: 'cl_777', recipient: { ...dropper, account_id: 'tok_case' }, context: pressured })).json()
     expect(scored.alert_id).toMatch(/^al_/)
 

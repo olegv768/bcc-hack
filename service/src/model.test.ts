@@ -38,7 +38,7 @@ describe('рабочая модель', () => {
     }
   })
 
-  it('счёт-сборщик с десятками незнакомых отправителей придерживается', () => {
+  it('счёт-сборщик с десятками незнакомых отправителей приостанавливается', () => {
     // в обучающих данных столько отправителей бывает только у честных продавцов; без ограничения
     // монотонности модель считала такой счёт безопасным
     const collector: RecipientFeatures = { ...NO_SIGNALS, account_age_days: 400, unrelated_senders_7d: 30, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 }
@@ -87,7 +87,7 @@ describe('рабочая модель', () => {
     expect(transferScore(transfer, 2, base).score).toBeGreaterThan(transferScore(transfer, 1, base).score)
   })
 
-  it('перевод на счёт выше порога «придержать» молча не уходит, даже знакомому, без звонка и на обычную сумму', () => {
+  it('перевод на счёт выше порога «приостановить» молча не уходит, даже знакомому, без звонка и на обычную сумму', () => {
     const risky: RecipientFeatures = { ...NO_SIGNALS, account_age_days: 10, unrelated_senders_7d: 4, fast_outflow_share_7d: 0.9, shared_device_accounts: 1 }
     expect(scoreRecipient(model, risky).risk).toBeGreaterThanOrEqual(model.thresholds.hold)
     const calm: TransferContext = { amount: 20000, sender_on_call: false, remote_access_active: null, first_transfer_to_recipient: false, amount_to_typical_ratio: 1 }

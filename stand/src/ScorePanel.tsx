@@ -60,7 +60,7 @@ function RiskScale(props: { risk: number }) {
           <span className="inline-block size-2.5 rounded-full bg-warn" /> предупредить, от {fixed(warn)}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block size-2.5 rounded-full bg-hold" /> придержать, от {fixed(hold)}
+          <span className="inline-block size-2.5 rounded-full bg-hold" /> приостановить, от {fixed(hold)}
         </span>
       </div>
     </div>
@@ -69,7 +69,7 @@ function RiskScale(props: { risk: number }) {
 
 const HISTORY_CODES = ['CONFIRMED_FRAUD', 'REPEAT_TARGET']
 
-const CREDIT_LABEL = { none: 'Зачислено', notify: 'Зачислено, получатель предупреждён', hold_credit: 'Зачисление придержано' }
+const CREDIT_LABEL = { none: 'Зачислено', notify: 'Зачислено, получатель предупреждён', hold_credit: 'Зачисление приостановлено' }
 
 // Вторая сторона «треугольника»: клиент всё-таки заплатил, деньги пришли продавцу криптовалюты — клиенту BCC.
 // Банк получателя проверяет поступление (POST /incoming) и предупреждает продавца до того, как тот отпустит USDT.
@@ -103,7 +103,7 @@ function RecipientSide(props: { credit: { request: IncomingRequest; response: In
           ))}
         </ul>
       )}
-      <p className="mt-3 text-[13px] text-muted">Сумма {request.amount.toLocaleString('ru-RU')} ₸ от «{request.sender.display_name}». Если отправитель в другом банке, BCC узнаёт о мошенничестве из Антифрод-центра Национального банка и придерживает зачисление.</p>
+      <p className="mt-3 text-[13px] text-muted">Сумма {request.amount.toLocaleString('ru-RU')} ₸ от «{request.sender.display_name}». Если отправитель в другом банке, BCC узнаёт о мошенничестве из Антифрод-центра Национального банка и приостанавливает зачисление.</p>
     </section>
   )
 }
@@ -136,7 +136,7 @@ export function ScorePanel(props: {
     return (
       <div className="rounded-[20px] border border-dashed border-line p-6">
         <p className="text-[19px] font-semibold">Здесь появится решение</p>
-        <p className="mt-2 max-w-[52ch] text-ink-2">Нажмите «Перевести» — сервис ответит: пропустить, предупредить или придержать, и объяснит почему.</p>
+        <p className="mt-2 max-w-[52ch] text-ink-2">Нажмите «Перевести» — сервис ответит: пропустить, предупредить или приостановить, и объяснит почему.</p>
       </div>
     )
   }

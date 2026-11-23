@@ -52,9 +52,9 @@ export function TransferChart(props: { transfer: Transfer; context: TransferCont
   const verdict = !thresholds
     ? null
     : props.transfer.score >= thresholds.hold
-      ? `выше порога «придержать» (${number(thresholds.hold)})`
+      ? `выше порога «приостановить» (${number(thresholds.hold)})`
       : props.transfer.score >= thresholds.warn
-        ? `между порогами «предупредить» (${number(thresholds.warn)}) и «придержать» (${number(thresholds.hold)})`
+        ? `между порогами «предупредить» (${number(thresholds.warn)}) и «приостановить» (${number(thresholds.hold)})`
         : `ниже порога «предупредить» (${number(thresholds.warn)})`
 
   return (

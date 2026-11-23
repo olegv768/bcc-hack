@@ -356,7 +356,7 @@ export function createInvestigator(source: BankGraphSource, options: Omit<Invest
         let v = 0.45
         for (const t of suspiciousTargets.slice(0, 3)) {
           const before = sent.filter((x) => x.to === t.to && x.at < t.at).length
-          const status = t.status === 'held' ? ' (перевод придержан)' : t.status === 'warned' ? ' (с предупреждением)' : ''
+          const status = t.status === 'held' ? ' (перевод приостановлен)' : t.status === 'warned' ? ' (с предупреждением)' : ''
           victim.push({
             text: triangleTarget(t)
               ? names([`Оплатил «товар» ${money(t.amount)} на счёт продавца криптовалюты: ${name(t.to)}${status}`])

@@ -89,7 +89,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         !props.error && <p className="text-ink-2">Загружаем…</p>
       ) : props.items.length === 0 ? (
         <p className="rounded-[20px] border border-dashed border-line p-6 text-ink-2">
-          Пока пусто. Счёт попадает в выгрузку, когда сервис рекомендует предупредить клиента или придержать перевод.
+          Пока пусто. Счёт попадает в выгрузку, когда сервис рекомендует предупредить клиента или приостановить перевод.
         </p>
       ) : (
         <div className="max-h-[480px] overflow-auto border-y border-line">

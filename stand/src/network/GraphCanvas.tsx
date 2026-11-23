@@ -254,7 +254,7 @@ export function GraphCanvas(props: {
       .data(edges.filter((e) => e.type === 'transfer'), (d) => d.id)
       .join('text')
       .attr('class', 'amount tabular')
-      .text((d) => (d.transfers?.some((t) => t.status === 'held') && !d.total ? 'придержан' : shortMoney(d.total ?? 0)))
+      .text((d) => (d.transfers?.some((t) => t.status === 'held') && !d.total ? 'приостановлен' : shortMoney(d.total ?? 0)))
       .attr('text-anchor', 'middle')
       .attr('fill', GRAPH.amount)
       .attr('font-weight', 600)

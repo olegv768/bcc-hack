@@ -31,7 +31,7 @@ export function perDay(p: Preset, inputs: Inputs) {
   const fraud = (inputs.transfersPerDay * inputs.fraudPer100k) / 100000
   const honest = inputs.transfersPerDay - fraud
   const cancel = inputs.cancelAfterWarning / 100
-  // сумма, которая не ушла бы мошенникам: придержанные переводы целиком и отменённые после предупреждения
+  // сумма, которая не ушла бы мошенникам: приостановленные переводы целиком и отменённые после предупреждения
   const saved = fraud * inputs.averageDamage * (p.fraud.hold_amount + cancel * p.fraud.warn_amount)
   const alerts = fraud * (p.fraud.hold + p.fraud.warn) + honest * (p.honest.hold + p.honest.warn)
   const falseHolds = honest * p.honest.hold

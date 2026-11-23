@@ -140,7 +140,7 @@ export function NodePanel(props: {
                 >
                   {h.direction === 'in' ? 'от ' : '→ '}
                   {h.counterparty_label}
-                  <span className="text-muted"> · {CHANNEL[h.channel] ?? h.channel}{h.status === 'held' ? ', придержан' : h.status === 'warned' ? ', с предупреждением' : ''}</span>
+                  <span className="text-muted"> · {CHANNEL[h.channel] ?? h.channel}{h.status === 'held' ? ', приостановлен' : h.status === 'warned' ? ', с предупреждением' : ''}</span>
                 </button>
                 <span className={'tabular font-semibold ' + (h.direction === 'in' ? 'text-allow' : '')}>
                   {h.direction === 'in' ? '+' : '−'}

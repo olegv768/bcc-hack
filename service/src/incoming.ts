@@ -118,7 +118,7 @@ export function incomingRoutes(alerts: ReturnType<typeof createAlertQueue>) {
     const onCall = r.sender.on_call === true && r.recipient.p2p_trader_profile === true
     if (onCall) reasons.push({ code: 'SENDER_ON_CALL', text: t.onCall })
 
-    // Зачисление придерживаем только по отметке Антифрод-центра: это сообщение банка отправителя,
+    // Зачисление приостанавливаем только по отметке Антифрод-центра: это сообщение банка отправителя,
     // а не наша догадка. Остальное — предупреждение получателю, деньги он получает.
     const action: IncomingAction = flagged ? 'hold_credit' : triangle || onCall ? 'notify' : 'none'
 

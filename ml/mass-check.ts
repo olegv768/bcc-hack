@@ -79,6 +79,6 @@ if (partIndex >= 0) {
   const honest = n(total.honest)
   const pct = (v: number) => (v * 100).toFixed(2) + '%'
   console.log(`Переводов: ${(fraud + honest).toLocaleString('ru-RU')} (мошеннических ${fraud.toLocaleString('ru-RU')}, честных ${honest.toLocaleString('ru-RU')}), ${Math.round((Date.now() - started) / 1000)} с`)
-  console.log(`Мошеннические: придержано ${pct(total.fraud.hold / fraud)}, предупреждение ${pct(total.fraud.warn / fraud)}, пропущено ${pct(total.fraud.allow / fraud)}`)
-  console.log(`Честные на 1000: придержано ${((total.honest.hold / honest) * 1000).toFixed(2)}, предупреждение ${((total.honest.warn / honest) * 1000).toFixed(2)}`)
+  console.log(`Мошеннические: приостановлено ${pct(total.fraud.hold / fraud)}, предупреждение ${pct(total.fraud.warn / fraud)}, пропущено ${pct(total.fraud.allow / fraud)}`)
+  console.log(`Честные на 1000: приостановлено ${((total.honest.hold / honest) * 1000).toFixed(2)}, предупреждение ${((total.honest.warn / honest) * 1000).toFixed(2)}`)
 }

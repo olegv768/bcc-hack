@@ -61,7 +61,7 @@ export function transferInputs(context: TransferContext): Record<TransferInput, 
     // Сумма меньше обычной риск не снижает: иначе мошенник просил бы переводить частями.
     // Сумма в AMOUNT_RATIO_CAP раз больше обычной и выше весит одинаково: крупные разовые платежи
     // (залог за квартиру, покупка машины) бывают и у честных клиентов, а одна сумма не должна
-    // придерживать перевод на чистый счёт.
+    // приостанавливать перевод на чистый счёт.
     amount_log: known ? Math.log(Math.min(AMOUNT_RATIO_CAP, Math.max(1, ratio))) : 0,
   }
 }
@@ -69,7 +69,7 @@ export function transferInputs(context: TransferContext): Record<TransferInput, 
 export const AMOUNT_RATIO_CAP = 5
 
 // Страховка по счёту: перевод на счёт, который модель сама считает дроппером (риск выше порога
-// «придержать»), молча не уходит. Жертву могут уговорить платить одному и тому же дропперу много
+// «приостановить»), молча не уходит. Жертву могут уговорить платить одному и тому же дропперу много
 // раз — тогда «уже переводил» и обычная сумма не значат, что всё в порядке.
 export function accountFloor(risk: number, thresholds: { hold: number }, history: AccountHistory = NO_HISTORY) {
   return !history.confirmedLegit && risk >= thresholds.hold
@@ -233,12 +233,12 @@ export function decide(model: Model, features: RecipientFeatures, context: Trans
 
   // На счёт за сутки уже шли подозрительные переводы от нескольких клиентов — поднимаем решение на ступень.
   if (repeatTarget) action = action === 'allow' ? 'warn' : 'hold'
-  // Подтверждённый мошеннический счёт: придерживаем всегда.
+  // Подтверждённый мошеннический счёт: приостанавливаем всегда.
   if (history.confirmedFraud) action = 'hold'
 
   // «Треугольник»: клиент платит за товар или услугу, а получатель — продавец криптовалюты на P2P.
   // Так мошенник расплачивается деньгами покупателя за чужую криптовалюту. Счёт получателя при этом
-  // обычно честный и оценку не поднимает, поэтому правило отдельное: предупредить, а не придержать.
+  // обычно честный и оценку не поднимает, поэтому правило отдельное: предупредить, а не приостановить.
   const triangle = isTriangle(context)
   if (triangle && action === 'allow') action = 'warn'
 

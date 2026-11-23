@@ -484,7 +484,7 @@ if (stress) {
 if (metrics.transfer_level) {
   const tm = metrics.transfer_level.transfer_model!
   console.log(`\nВторая ступень (оценка перевода): свободный ${tm.bias.toFixed(3)}, веса ${JSON.stringify(Object.fromEntries(Object.entries(tm.weights).map(([k, v]) => [k, round(v, 3)])))}`)
-  console.log(`  пороги ${JSON.stringify(tm.thresholds)}, нагрузка на честных как у правил: придержано ${pct(tm.matched_honest_load.hold)}, замечено ${pct(tm.matched_honest_load.seen)}`)
+  console.log(`  пороги ${JSON.stringify(tm.thresholds)}, нагрузка на честных как у правил: приостановлено ${pct(tm.matched_honest_load.hold)}, замечено ${pct(tm.matched_honest_load.seen)}`)
   for (const [title, t, r] of [
     ['все сигналы', metrics.transfer_level.with_call_signal, metrics.transfer_level.rules.with_call_signal],
     ['без сигнала звонка', metrics.transfer_level.without_call_signal, metrics.transfer_level.rules.without_call_signal],
@@ -494,13 +494,13 @@ if (metrics.transfer_level) {
   ] as const) {
     console.log(`\nПереводы, ${title}`)
     for (const [name, x] of [['вторая ступень', t], ['правила', r]] as const) {
-      console.log(`  ${name.padEnd(15)} мошеннические: придержано ${pct(x.fraud.hold)}, предупреждение ${pct(x.fraud.warn)}, пропущено ${pct(1 - x.fraud.hold - x.fraud.warn)}; честные: придержано ${pct(x.honest.hold)}, предупреждение ${pct(x.honest.warn)}`)
+      console.log(`  ${name.padEnd(15)} мошеннические: приостановлено ${pct(x.fraud.hold)}, предупреждение ${pct(x.fraud.warn)}, пропущено ${pct(1 - x.fraud.hold - x.fraud.warn)}; честные: приостановлено ${pct(x.honest.hold)}, предупреждение ${pct(x.honest.warn)}`)
     }
   }
 }
 
 if (metrics.transfer_level) {
-  console.log('\nСтрогость порогов (все сигналы)          мошеннические: замечено / по сумме придержано    честные: зря на 10 000')
+  console.log('\nСтрогость порогов (все сигналы)          мошеннические: замечено / по сумме приостановлено    честные: зря на 10 000')
   for (const p of metrics.transfer_level.presets) {
     for (const [name, x] of [[p.name, p], ['  правила', p.rules]] as const) {
       const seen = x.fraud.hold + x.fraud.warn

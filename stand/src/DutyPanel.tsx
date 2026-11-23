@@ -53,7 +53,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
           <p className="text-[19px] font-semibold">{props.alerts === null ? props.error || 'Загружаем очередь…' : 'Очередь пуста'}</p>
           {props.alerts !== null && (
             <p className="mx-auto mt-2 max-w-[52ch] text-ink-2">
-              Алерт появляется, когда сервис рекомендует предупредить клиента или придержать перевод. Сделайте перевод на «Безопасный счёт» —
+              Алерт появляется, когда сервис рекомендует предупредить клиента или приостановить перевод. Сделайте перевод на «Безопасный счёт» —
               карточка появится здесь сразу.
             </p>
           )}
@@ -108,7 +108,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                 {selected.model_version.startsWith('incoming') ? (
                   <>
                     <span className="rounded-full bg-[#e6ecff] px-2.5 py-0.5 text-[13px] font-semibold text-[#1d3fbf]">
-                      {selected.action === 'hold' ? 'Зачисление придержано' : 'Получатель предупреждён'}
+                      {selected.action === 'hold' ? 'Зачисление приостановлено' : 'Получатель предупреждён'}
                     </span>{' '}
                     проверка поступления на счёт клиента банка
                   </>

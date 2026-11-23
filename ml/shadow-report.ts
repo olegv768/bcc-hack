@@ -90,13 +90,13 @@ const held = fraud.filter((r) => r.action === 'hold')
 const warned = fraud.filter((r) => r.action === 'warn')
 console.log('\nПри порогах, с которыми шёл пилот')
 console.log(`  мошеннических замечено: ${pct((held.length + warned.length) / Math.max(fraud.length, 1))}` +
-  ` (придержано ${pct(held.length / Math.max(fraud.length, 1))}, предупреждение ${pct(warned.length / Math.max(fraud.length, 1))})`)
+  ` (приостановлено ${pct(held.length / Math.max(fraud.length, 1))}, предупреждение ${pct(warned.length / Math.max(fraud.length, 1))})`)
 if (fraud.some((r) => r.amount !== null)) {
-  console.log(`  сумма мошеннических переводов: ${money(sum(fraud))}; из неё придержано ${money(sum(held))}, под предупреждением ${money(sum(warned))}`)
+  console.log(`  сумма мошеннических переводов: ${money(sum(fraud))}; из неё приостановлено ${money(sum(held))}, под предупреждением ${money(sum(warned))}`)
 }
 const honestFlagged = honest.filter(flagged)
 console.log(`  честных побеспокоено зря: ${per10k(honestFlagged.length, honest.length)} на 10 000` +
-  ` (придержано ${per10k(honest.filter((r) => r.action === 'hold').length, honest.length)} на 10 000)`)
+  ` (приостановлено ${per10k(honest.filter((r) => r.action === 'hold').length, honest.length)} на 10 000)`)
 console.log(`  срабатываний в день на разбор: ${Math.round(responses.filter(flagged).length / files.days)}`)
 
 // Таблица порогов — только по оценке счёта (risk). Правила по звонку и удалённому доступу добавят сверху ещё срабатываний.

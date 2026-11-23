@@ -104,7 +104,7 @@ function TransferStand() {
               <h1 className="max-w-[17ch] font-display text-[40px] leading-[1.03] sm:text-[60px]">Перевод мошеннику останавливается здесь</h1>
               <p className="mt-6 max-w-[52ch] text-[18px] leading-relaxed text-white/75">
                 Перед отправкой денег банк спрашивает сервис о счёте получателя. Сервис отвечает за миллисекунды: пропустить, предупредить
-                клиента или придержать перевод — и объясняет почему.
+                клиента или приостановить перевод — и объясняет почему.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <a href="#demo" className="rounded-full bg-white px-6 py-3 text-[15px] font-semibold text-navy hover:bg-white/90">

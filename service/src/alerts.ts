@@ -1,5 +1,5 @@
 // Очередь алертов для антифрод-аналитика. Каждый перевод с рекомендацией «предупредить» или
-// «придержать» становится алертом: система ведения инцидентов банка (Case Management) забирает
+// «приостановить» становится алертом: система ведения инцидентов банка (Case Management) забирает
 // очередь через GET /alerts или получает алерт сразу — на адрес из ALERT_WEBHOOK_URL.
 // Здесь, как и в store.ts, хранение — память и один JSON-файл.
 
@@ -54,7 +54,7 @@ export function createAlertQueue(file: string) {
   return {
     add(input: Omit<Alert, 'alert_id' | 'created_at' | 'updated_at' | 'priority' | 'status' | 'resolution'>): Alert {
       const now = new Date().toISOString()
-      // высокий приоритет: перевод придержан или телефоном клиента управляют удалённо
+      // высокий приоритет: перевод приостановлен или телефоном клиента управляют удалённо
       const urgent = input.action === 'hold' || input.triggers.some((t) => t.code === 'REMOTE_ACCESS')
       const alert: Alert = {
         alert_id: 'al_' + randomUUID().slice(0, 13),

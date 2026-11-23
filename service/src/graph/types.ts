@@ -43,7 +43,7 @@ export type Transfer = {
   amount: number
   at: string
   channel: 'p2p' | 'interbank' | 'card' | 'cash'
-  // live — перевод из очереди алертов: банк его предупредил или придержал, он мог и не пройти
+  // live — перевод из очереди алертов: банк его предупредил или приостановил, он мог и не пройти
   status?: 'done' | 'warned' | 'held'
   purpose?: Purpose | null // назначение, которое указал отправитель
 }

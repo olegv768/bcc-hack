@@ -66,7 +66,7 @@ export function Metrics() {
       </p>
 
       <dl className="grid gap-x-12 gap-y-8 border-y border-line py-8 sm:grid-cols-3">
-        <BankFigure value={percent(all.fraud.hold_amount, 0)} label="суммы мошеннических переводов сервис придержал бы" />
+        <BankFigure value={percent(all.fraud.hold_amount, 0)} label="суммы мошеннических переводов сервис приостановил бы" />
         <BankFigure value={percent(all.fraud.warn_amount, 0)} label="суммы ушло бы под предупреждение: часть клиентов отменит перевод сама" />
         <BankFigure value={`${per(bothered(all), 10000)} из 10 000`} label="честных переводов сервис побеспокоит зря" />
       </dl>
@@ -79,7 +79,7 @@ export function Metrics() {
           Здесь сведения о переводе не учитываются — только признаки счёта получателя: четыре базовых и три дополнительных сигнала (сколько
           счёт молчал, вход с нового устройства, связь отправителей с заблокированными счетами). Сколько счетов мошенников из 100 замечает
           модель при доле ложных срабатываний {per(warn.honest_flagged, 1000)} честных счетов из 1000 на пороге «предупредить» и{' '}
-          {per(hold.honest_flagged, 1000)} на пороге «придержать».
+          {per(hold.honest_flagged, 1000)} на пороге «приостановить».
           Потолок — результат идеальной модели, которая знает, как устроены наши синтетические данные: выше него по этим признакам подняться
           нельзя.
         </p>
@@ -96,7 +96,7 @@ export function Metrics() {
             {(
               [
                 ['Замечает (порог «предупредить»)', warn.droppers_found, ceiling('warn').droppers_found],
-                ['Придерживает перевод (порог «придержать»)', hold.droppers_found, ceiling('hold').droppers_found],
+                ['Приостанавливает перевод (порог «приостановить»)', hold.droppers_found, ceiling('hold').droppers_found],
                 ['Мошенники сменили тактику: чаще купленные и «тихие» счета', stress('model').droppers_found, stress('ceiling').droppers_found],
               ] as const
             ).map(([label, after, top]) => (
@@ -123,7 +123,7 @@ export function Metrics() {
         <TradeoffChart
           points={metrics.roc}
           marks={[
-            { label: 'Придержать перевод', ...hold },
+            { label: 'Приостановить перевод', ...hold },
             { label: 'Предупредить клиента', ...warn },
           ]}
         />
@@ -140,7 +140,7 @@ export function Metrics() {
                   <th className={cell + ' font-medium'}>Тип счёта</th>
                   <th className={number + ' hidden font-medium sm:table-cell'}>Счетов</th>
                   <th className={number + ' font-medium'}>Среагировал</th>
-                  <th className={number + ' font-medium'}>Придержал</th>
+                  <th className={number + ' font-medium'}>Приостановил</th>
                 </tr>
               </thead>
               {[true, false].map((isDropper) => (
@@ -256,7 +256,7 @@ function Outcome(props: {
         className="mt-6 block h-auto w-full"
         style={{ maxWidth: width }}
         role="img"
-        aria-label={`${props.lead} ${props.value}: перевод придержан у ${props.held}, предупреждение у ${props.warned}, ${props.rest} — ${left}`}
+        aria-label={`${props.lead} ${props.value}: перевод приостановлен у ${props.held}, предупреждение у ${props.warned}, ${props.rest} — ${left}`}
       >
         {Array.from({ length: props.total }, (_, i) => (
           <circle
@@ -270,7 +270,7 @@ function Outcome(props: {
       </svg>
 
       <ul className="mt-5 space-y-1.5 text-[15px]">
-        <Key color={HELD} count={props.held} text="перевод придержан" />
+        <Key color={HELD} count={props.held} text="перевод приостановлен" />
         <Key color={WARNED} count={props.warned} text="клиент получает предупреждение" />
         <Key color={REST} count={left} text={props.rest} />
       </ul>

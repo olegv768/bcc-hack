@@ -77,7 +77,7 @@ describe('получатель: POST /incoming', () => {
     expect(body.alert_id).toBeTruthy()
   })
 
-  test('отметка Антифрод-центра — зачисление придержать', async () => {
+  test('отметка Антифрод-центра — зачисление приостановить', async () => {
     const body = await post('/incoming', { ...base, lang: 'kk', sender: { bank: 'other' }, antifraud_center: { flagged: true, ref: 'АЦ-1' } })
     expect(body.action).toBe('hold_credit')
     expect(body.reasons[0].code).toBe('ANTIFRAUD_CENTER')

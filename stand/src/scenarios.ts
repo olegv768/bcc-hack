@@ -113,7 +113,7 @@ export const FEATURE_LABELS: Record<FeatureKey, (value: number) => string> = {
   flagged_linked_senders_7d: (v) => `Отправителей, которые платили и на заблокированные счета: ${v}`,
 }
 
-export const ACTION_LABELS = { allow: 'Пропустить', warn: 'Предупредить', hold: 'Придержать' } as const
+export const ACTION_LABELS = { allow: 'Пропустить', warn: 'Предупредить', hold: 'Приостановить' } as const
 
 export const KIND_LABELS: Record<string, string> = {
   regular: 'Обычный клиент со старым счётом',
