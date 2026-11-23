@@ -75,7 +75,6 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
         <a className={link} href="/api/flagged" target="_blank" rel="noreferrer">
           JSON
         </a>
-        . Фильтры: <code className="font-mono text-[13px]">?min_risk=0.9&amp;action=hold&amp;since=2026-11-01T00:00:00Z</code>
       </p>
 
       {props.items && props.items.length > 0 && (

@@ -155,7 +155,7 @@ function TransferStand() {
         </div>
 
         <div className={CONTAINER + ' py-16'}>
-          <Step number={4} title="Выгрузка для аналитика" note="Все помеченные счета с причинами — файлом для Excel или по API.">
+          <Step number={4} title="Выгрузка для аналитика">
             <ExportPanel items={flagged} error={flaggedError} onChanged={refreshFlagged} />
           </Step>
         </div>
@@ -240,14 +240,14 @@ function Station(props: { title: string; tone?: string; fill?: boolean; run?: st
   )
 }
 
-function Step(props: { number: number; title: string; note: string; sticky?: boolean; children: React.ReactNode }) {
+function Step(props: { number: number; title: string; note?: string; sticky?: boolean; children: React.ReactNode }) {
   return (
     <section className={'min-w-0 ' + (props.sticky ? '[@media(min-height:900px)]:lg:sticky lg:top-6 lg:self-start' : '')}>
       <h2 className="flex items-center gap-3 text-[22px] leading-tight font-bold">
         <span className="tabular grid size-8 shrink-0 place-items-center rounded-full bg-ink text-[14px] text-white">{props.number}</span>
         {props.title}
       </h2>
-      <p className="mt-2 mb-6 max-w-[70ch] text-[15px] text-ink-2">{props.note}</p>
+      {props.note ? <p className="mt-2 mb-6 max-w-[70ch] text-[15px] text-ink-2">{props.note}</p> : <div className="mb-6" />}
       {props.children}
     </section>
   )
