@@ -12,9 +12,10 @@ const accounts = generateAccounts(600, createRng(7))
 // дополнительные сигналы не переданы
 const NO_SIGNALS = { idle_days_before_inflow: null, new_device_7d: null, flagged_linked_senders_7d: null }
 
-// «хуже» для каждого признака: моложе счёт, больше незнакомых отправителей, быстрее вывод, больше устройств
-const WORSE: Record<FeatureKey, (v: number) => number> = {
-  account_age_days: (v) => Math.max(0, Math.round(v * 0.6)),
+// «хуже» для каждого признака: больше незнакомых отправителей, быстрее вывод, больше устройств и т. д.
+// Возраста счёта здесь нет: его влияние модель учит сама — дропперы бывают и на свежих, и на купленных
+// старых, и на «тихих» счетах возрастом около года (ml/challenger/export_lgbm.py).
+const WORSE: Record<Exclude<FeatureKey, 'account_age_days'>, (v: number) => number> = {
   unrelated_senders_7d: (v) => v + 4,
   fast_outflow_share_7d: (v) => Math.min(1, v + 0.2),
   shared_device_accounts: (v) => v + 2,
@@ -31,10 +32,18 @@ describe('рабочая модель', () => {
   it('риск не падает, когда признак становится хуже', () => {
     for (const a of accounts) {
       const base = scoreRecipient(model, a.features, false).logit
-      for (const key of FEATURE_KEYS) {
+      for (const key of Object.keys(WORSE) as (keyof typeof WORSE)[]) {
         const worse = { ...a.features, [key]: WORSE[key](a.features[key]!) }
         expect(scoreRecipient(model, worse, false).logit).toBeGreaterThanOrEqual(base - 1e-9)
       }
+    }
+  })
+
+  it('свежий счёт рискованнее того же счёта с многолетней историей', () => {
+    for (const a of accounts) {
+      const fresh = scoreRecipient(model, { ...a.features, account_age_days: 5 }, false).logit
+      const old = scoreRecipient(model, { ...a.features, account_age_days: 2500 }, false).logit
+      expect(fresh).toBeGreaterThan(old)
     }
   })
 

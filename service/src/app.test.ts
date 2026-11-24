@@ -171,7 +171,7 @@ describe('выгрузка для аналитика', () => {
 describe('память о счёте', () => {
   const patch = (id: string, body: unknown) =>
     fetch(`${url}/alerts/${id}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) })
-  const transit = { account_age_days: 900, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 }
+  const transit = { account_age_days: 400, unrelated_senders_7d: 6, fast_outflow_share_7d: 0.85, shared_device_accounts: 2 }
 
   test('после подтверждения мошенничества любой перевод на этот счёт приостанавливается', async () => {
     const first = await (await score({ recipient: { ...dropper, account_id: 'tok_known' }, context: pressured })).json()

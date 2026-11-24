@@ -9,9 +9,14 @@
 находят больше дропперов, чем наш прежний бустинг, но без ограничений обе модели решают, что «очень
 много незнакомых отправителей» — признак честного продавца. На синтетике это верно, а в жизни так
 выглядит счёт-сборщик, на который несут деньги десятки жертв. Поэтому риск обязан не падать, когда
-счёт моложе, незнакомых отправителей больше, вывод быстрее, общих устройств больше, счёт дольше
-молчал, в него вошли с нового устройства или больше отправителей связаны с заблокированными счетами.
-LightGBM выдерживает это ограничение почти без потерь, наш бустинг и InterpretML — с потерей 4–10 п.п.
+незнакомых отправителей больше, вывод быстрее, общих устройств больше, счёт дольше молчал, в него
+вошли с нового устройства или больше отправителей связаны с заблокированными счетами.
+
+Возраст счёта — исключение: модель учит его влияние сама. Дропперы бывают и на свежих счетах, и на
+купленных старых, и на «тихих» счетах возрастом около года, поэтому «старше — значит безопаснее»
+верно не везде. Проверка по одному ограничению (docs/MODEL_VALIDATION.md) показала: дорого стоит
+только это — без него модель находит на 1 п.п. больше дропперов и больше сборщиков; снятие любого
+другого ограничения почти ничего не даёт, а без ограничения на отправителей пропадают сборщики.
 
 Что делает скрипт:
 1. Подбирает настройки Optuna на validation (test не трогает). Каждые 100 деревьев вариант
@@ -44,7 +49,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent
 FEATURES = ["account_age_days", "unrelated_senders_7d", "fast_outflow_share_7d", "shared_device_accounts",
             "idle_days_before_inflow", "new_device_7d", "flagged_linked_senders_7d"]
-MONOTONE = [-1, 1, 1, 1, 1, 1, 1]
+# 0 — без ограничения: возраст счёта (см. выше)
+MONOTONE = [0, 1, 1, 1, 1, 1, 1]
 SEED = 20261112
 TARGET_FPR = {"warn": 0.02, "hold": 0.003}
 CHECK_ROWS = 500
@@ -102,6 +108,7 @@ def main() -> None:
     cli.add_argument("--ensemble", type=int, default=0, help="0 — выбрать по проверочной выборке; N — усреднить N моделей")
     cli.add_argument("--jobs", type=int, default=1, help="сколько вариантов считать одновременно (ядра делятся между ними; на 12 ядрах один вариант на все ядра быстрее)")
     cli.add_argument("--from-log", action="store_true", help="не подбирать заново: взять лучший вариант из data/tuning.log (если подбор остановили раньше)")
+    cli.add_argument("--trial", type=int, default=None, help="с --from-log: взять вариант с этим номером, а не лучший (например, равный по точности, но с мелкими деревьями — объяснение решения быстрее)")
     args = cli.parse_args()
     TRIALS = args.trials
     threads = max(1, (os.cpu_count() or 4) // args.jobs)
@@ -110,7 +117,8 @@ def main() -> None:
     if args.from_log:
         lines = [line.split(None, 3) for line in log_path.read_text(encoding="utf-8").splitlines() if line.strip()]
         TRIALS = len(lines)
-        logged = [(float(v), json.loads(p)) for _, v, _, p in lines if v != "отсечён"]
+        logged = [(float(v), json.loads(p)) for n, v, _, p in lines if v != "отсечён" and (args.trial is None or int(n) == args.trial)]
+        assert logged, f"в журнале нет посчитанного варианта {args.trial}"
     log = open(os.devnull, "w") if args.from_log else log_path.open("w", encoding="utf-8")
     df = pd.read_csv(ROOT / "data" / "bench.csv")
     train, validation, test = (df[df.split == s].reset_index(drop=True) for s in ("train", "validation", "test"))
@@ -119,7 +127,7 @@ def main() -> None:
     # для промежуточных проверок — каждый пятый счёт validation: быстро, а слабый вариант видно и так
     x_peek, y_peek = validation[FEATURES].iloc[::5], yv[::5]
 
-    # больше всего ценим строгий порог «придержать»: там ошибка дороже
+    # больше всего ценим строгий порог «приостановить»: там ошибка дороже
     def goal(sv: np.ndarray, y: np.ndarray = yv) -> float:
         return 0.6 * recall_at(sv, y, TARGET_FPR["hold"]) + 0.4 * recall_at(sv, y, TARGET_FPR["warn"])
 
@@ -169,12 +177,14 @@ def main() -> None:
     study = optuna.create_study(direction="maximize", sampler=optuna.samplers.TPESampler(seed=SEED), pruner=pruner)
     # первая попытка — прежние настройки, чтобы было с чем сравнивать
     study.enqueue_trial({
-        "num_leaves": 28, "n_estimators": 400, "learning_rate": 0.0224, "min_child_samples": 87, "reg_lambda": 0.122,
-        "subsample": 0.8715, "scale_pos_weight": 2.219, "max_bin": 255, "path_smooth": 0.0, "monotone_constraints_method": "advanced",
+        "num_leaves": 12, "n_estimators": 1089, "learning_rate": 0.025439602317877657, "min_child_samples": 85,
+        "reg_lambda": 83.1213248308358, "subsample": 0.9051820078648092, "scale_pos_weight": 6.81607024717622,
+        "max_bin": 511, "path_smooth": 28.550260348104626, "monotone_constraints_method": "advanced",
     })
     if logged:
         best_value, params = max(logged, key=lambda item: item[0])
-        print(f"Из журнала подбора: {TRIALS} попыток (отсечено {TRIALS - len(logged)}), лучшая цель на validation {best_value:.4f}: {params}")
+        chosen = f"вариант {args.trial}" if args.trial is not None else "лучшая"
+        print(f"Из журнала подбора: {TRIALS} попыток, {chosen}: цель на validation {best_value:.4f}: {params}")
     else:
         study.optimize(objective, n_trials=TRIALS, n_jobs=args.jobs)
         params = study.best_params
