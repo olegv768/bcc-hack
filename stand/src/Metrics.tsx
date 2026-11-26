@@ -1,6 +1,6 @@
 import metrics from '../../ml/metrics.json'
 import { BusinessCase } from './BusinessCase.tsx'
-import { KIND_LABELS, percent } from './scenarios.ts'
+import { KIND_LABELS, percent, ruForm } from './scenarios.ts'
 import { TradeoffChart } from './TradeoffChart.tsx'
 
 const warn = metrics.account_level.find((m) => m.threshold === 'warn')!
@@ -9,6 +9,12 @@ const count = (value: number) => value.toLocaleString('ru-RU')
 
 // Доли переводим в «столько-то из 100» и «из 1000»: так число сразу понятно без слова «процент».
 const per = (share: number, base: number) => Math.round(share * base)
+const perTenth = (share: number) => (share * 100).toLocaleString('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+
+type Forms = readonly [string, string, string]
+const HELD_WORDS: Forms = ['перевод приостановлен', 'перевода приостановлены', 'переводов приостановлено']
+const WARNED_WORDS: Forms = ['клиент получает предупреждение', 'клиента получают предупреждение', 'клиентов получают предупреждение']
+const words = (n: number, forms: Forms) => ruForm(n, ...forms)
 
 const ceiling = (name: string) => metrics.ceiling.account_level.find((m) => m.threshold === name)!
 const stress = (model: 'model' | 'ceiling') => metrics.stress[model].account_level.find((m) => m.threshold === 'warn')!
@@ -42,7 +48,7 @@ export function Metrics() {
           gap={5}
           held={fraudHeld}
           warned={fraudSeen - fraudHeld}
-          rest="пропущены"
+          rest={['перевод пропущен', 'перевода пропущены', 'переводов пропущено']}
           note="Учтено всё, что знает сервис: счёт получателя, звонок, был ли перевод этому получателю раньше и сумма."
         />
         <Outcome
@@ -54,7 +60,7 @@ export function Metrics() {
           gap={2.5}
           held={honestHeld}
           warned={honestSeen - honestHeld}
-          rest="переводят как обычно"
+          rest={['клиент переводит как обычно', 'клиента переводят как обычно', 'клиентов переводят как обычно']}
           note="Предупреждение можно прочитать и продолжить перевод."
         />
       </div>
@@ -109,8 +115,9 @@ export function Metrics() {
           </tbody>
         </table>
         <p className="mt-3 text-[14px] text-muted">
-          В повторных проверках результат модели на пороге «предупредить» менялся от {per(warn.droppers_found_interval[0]!, 100)} до{' '}
-          {per(warn.droppers_found_interval[1]!, 100)} из 100.
+          В повторных проверках результат модели на пороге «предупредить» менялся от {perTenth(warn.droppers_found_interval[0]!)} до{' '}
+          {perTenth(warn.droppers_found_interval[1]!)} из 100, на пороге «приостановить» — от {perTenth(hold.droppers_found_interval[0]!)} до{' '}
+          {perTenth(hold.droppers_found_interval[1]!)}.
         </p>
       </div>
 
@@ -227,7 +234,7 @@ function Outcome(props: {
   gap: number
   held: number
   warned: number
-  rest: string
+  rest: Forms
   note: string
 }) {
   const step = props.dot + props.gap
@@ -249,7 +256,7 @@ function Outcome(props: {
         className="mt-6 block h-auto w-full"
         style={{ maxWidth: width }}
         role="img"
-        aria-label={`${props.lead} ${props.value}: перевод приостановлен у ${props.held}, предупреждение у ${props.warned}, ${props.rest} — ${left}`}
+        aria-label={`${props.lead} ${props.value}: ${props.held} ${words(props.held, HELD_WORDS)}, ${props.warned} ${words(props.warned, WARNED_WORDS)}, ${left} ${words(left, props.rest)}`}
       >
         {Array.from({ length: props.total }, (_, i) => (
           <circle
@@ -263,9 +270,9 @@ function Outcome(props: {
       </svg>
 
       <ul className="mt-5 space-y-1.5 text-[15px]">
-        <Key color={HELD} count={props.held} text="перевод приостановлен" />
-        <Key color={WARNED} count={props.warned} text="клиент получает предупреждение" />
-        <Key color={REST} count={left} text={props.rest} />
+        <Key color={HELD} count={props.held} text={words(props.held, HELD_WORDS)} />
+        <Key color={WARNED} count={props.warned} text={words(props.warned, WARNED_WORDS)} />
+        <Key color={REST} count={left} text={words(left, props.rest)} />
       </ul>
       <p className="mt-3 text-[14px] text-muted">{props.note}</p>
     </figure>

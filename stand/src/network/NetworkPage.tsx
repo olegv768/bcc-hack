@@ -3,7 +3,7 @@ import type { Finding, MoneyRoute } from '../../../service/src/graph/types.ts'
 import { Findings } from './Findings.tsx'
 import { GraphCanvas, type Focus } from './GraphCanvas.tsx'
 import { investigate, loadCases, search, type Filters, type IncomingCase, type Investigation, type LinkFilter, type SearchResult, type Target } from './graphApi.ts'
-import { dateTime, LINK_LABEL, money, plural, TYPE_LABEL } from './look.ts'
+import { dateTime, EXAMPLE_SIGNAL, LINK_LABEL, money, plural, TYPE_LABEL } from './look.ts'
 import { NodePanel } from './NodePanel.tsx'
 import { Timeline } from './Timeline.tsx'
 import { TypeIcon } from './TypeIcon.tsx'
@@ -176,7 +176,7 @@ export function NetworkPage(props: { initial: string | null }) {
           <SearchBox onPick={choose} />
           <div className="mt-4 rounded-[12px] bg-field px-3 py-2.5 text-[14px]">
             <span className="block text-[12px] text-muted">Расследуем</span>
-            <span className="font-semibold break-all">{targetLabel || 'выберите сигнал или найдите счёт'}</span>
+            <span className="font-semibold [overflow-wrap:anywhere]">{targetLabel || 'выберите сигнал или найдите счёт'}</span>
           </div>
           <button
             type="button"
@@ -261,9 +261,18 @@ export function NetworkPage(props: { initial: string | null }) {
             <div className="max-w-[46ch]">
               <p className="text-[21px] font-semibold">{loading ? 'Строим сеть…' : error || 'Выберите сигнал антифрода и нажмите Analyze Network'}</p>
               {!loading && !error && (
-                <p className="mt-2 text-white/70">
-                  Модуль соберёт клиентов, счета, карты, устройства, IP-адреса и телефоны вокруг подозрительного счёта и покажет, как они связаны.
-                </p>
+                <>
+                  <p className="mt-2 text-white/70">
+                    Модуль соберёт клиентов, счета, карты, устройства, IP-адреса и телефоны вокруг подозрительного счёта и покажет, как они связаны.
+                  </p>
+                  {/* готовый пример: в этой сети есть всё — транзитные счета, сборщик и «треугольник» */}
+                  <a
+                    href={'#network/' + EXAMPLE_SIGNAL}
+                    className="mt-6 inline-flex min-h-11 items-center rounded-full bg-white px-5 text-[15px] font-semibold text-navy hover:bg-white/90"
+                  >
+                    Открыть пример: сигнал {EXAMPLE_SIGNAL}
+                  </a>
+                </>
               )}
             </div>
           </div>

@@ -91,7 +91,27 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
           Пока пусто. Счёт попадает в выгрузку, когда сервис рекомендует предупредить клиента или приостановить перевод.
         </p>
       ) : (
-        <div className="max-h-[480px] overflow-auto border-y border-line">
+        <>
+        {/* на телефоне таблица не помещается: те же данные карточками */}
+        <ul className="max-h-[560px] space-y-2 overflow-auto sm:hidden" aria-label="Помеченные счета">
+          {props.items.map((item) => (
+            <li key={item.account_id} className="rounded-[16px] border border-line bg-white p-4 text-[14px]">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate font-mono">{item.account_id}</span>
+                <ActionBadge action={item.last_action} />
+              </div>
+              <div className="tabular mt-1.5 text-ink-2">
+                риск {riskText(item.max_risk)} · {item.flagged_transfers} шт. на {money(item.flagged_amount)}
+              </div>
+              <ul className="mt-2.5 list-disc space-y-0.5 pl-4">
+                {item.reasons.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden max-h-[480px] overflow-auto border-y border-line sm:block">
           <table className="w-full min-w-[540px] text-left text-[14px]">
             <thead className="sticky top-0 border-b border-line bg-surface text-ink-2 shadow-[0_1px_0_var(--color-line)]">
               <tr>
@@ -106,7 +126,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
               {props.items.map((item) => (
                 <tr key={item.account_id} className="border-b border-line align-top last:border-0">
                   <td className="px-4 py-3 font-mono">{item.account_id}</td>
-                  <td className="tabular px-4 py-3 text-right">{riskText(item.max_risk)}</td>
+                  <td className="tabular px-4 py-3 text-right whitespace-nowrap">{riskText(item.max_risk)}</td>
                   <td className="px-4 py-3">
                     <ActionBadge action={item.last_action} />
                   </td>
@@ -126,6 +146,7 @@ export function ExportPanel(props: { items: FlaggedAccount[] | null; error: stri
             </tbody>
           </table>
         </div>
+        </>
       )}
     </div>
   )

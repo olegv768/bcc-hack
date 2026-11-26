@@ -124,3 +124,7 @@ export function plural(n: number, one: string, few: string, many: string) {
   const word = mod10 === 1 && mod100 !== 11 ? one : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many
   return `${n} ${word}`
 }
+
+// Сигнал демонстрационного антифрода, вокруг которого видна вся схема: транзитные счета, сборщик и
+// «треугольник». На него ведут пустой экран расследования и кнопки на странице перевода.
+export const EXAMPLE_SIGNAL = 'AF-77105'

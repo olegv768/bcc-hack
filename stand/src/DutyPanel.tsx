@@ -8,6 +8,10 @@ const STATUS_LABEL = { new: 'Новый', in_progress: 'В работе', closed
 const RESOLUTION_LABEL = { fraud: 'мошенничество подтверждено', legit: 'ложное срабатывание' }
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+const today = (iso: string) => new Date(iso).toDateString() === new Date().toDateString()
+// в очереди бывают алерты прошлых дней: без даты одно время подряд выглядело бы перепутанным
+const when = (iso: string) =>
+  today(iso) ? clock(iso) : new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 // Рабочая панель дежурного сотрудника фрод-мониторинга: настоящие алерты из очереди сервиса (GET /alerts).
 // В банке их показывает его система ведения инцидентов — она получает те же алерты по вебхуку или опросом.
@@ -76,10 +80,11 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                   <span className={'size-2.5 shrink-0 rounded-full ' + (alert.priority === 'high' ? 'bg-hold' : 'bg-warn')} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
                     <span className="tabular block text-[15px] font-semibold">{money(alert.amount)}</span>
-                    <span className="block text-[13px] text-muted">{alert.priority === 'high' ? 'Высокий приоритет' : 'Средний приоритет'}</span>
+                    <span className="sr-only">{alert.priority === 'high' ? 'Высокий приоритет' : 'Средний приоритет'}, получатель </span>
+                    <span className="block truncate font-mono text-[12.5px] text-muted">{alert.account_id}</span>
                   </span>
-                  <span className="text-right text-[13px] text-muted">
-                    <span className="tabular block">{clock(alert.created_at)}</span>
+                  <span className="shrink-0 text-right text-[13px] text-muted">
+                    <span className="tabular block whitespace-nowrap">{when(alert.created_at)}</span>
                     <span className="block">{STATUS_LABEL[alert.status].toLowerCase()}</span>
                   </span>
                 </button>
@@ -96,7 +101,9 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                 {STATUS_LABEL[selected.status]}
                 {selected.resolution ? ': ' + RESOLUTION_LABEL[selected.resolution] : ''}
               </span>
-              <span className="tabular ml-auto font-normal text-muted">получен в {clock(selected.created_at)}</span>
+              <span className="tabular ml-auto font-normal text-muted">
+                получен {today(selected.created_at) ? 'в ' + clock(selected.created_at) : when(selected.created_at)}
+              </span>
             </div>
 
             <div className="mt-5 flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
@@ -114,7 +121,7 @@ export function DutyPanel(props: { alerts: Alert[] | null; error: string; onChan
                   </>
                 ) : (
                   <>
-                    <ActionBadge action={selected.action} /> риск получателя <b className="tabular">{riskText(selected.risk)}</b>
+                    <ActionBadge action={selected.action} /> <span className="whitespace-nowrap">риск получателя <b className="tabular">{riskText(selected.risk)}</b></span>
                   </>
                 )}
               </div>

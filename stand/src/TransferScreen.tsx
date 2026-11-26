@@ -11,6 +11,20 @@ type Outcome = 'sent' | 'cancelled' | 'held'
 // причины, а не пустую панель. Флаг на уровне модуля: в режиме разработки React вызывает эффект дважды.
 let firstTransferSent = false
 
+// У этого первого перевода в браузере постоянный номер: сервис не создаёт второй алерт на тот же
+// перевод, поэтому повторные открытия стенда не забивают очередь дежурного одинаковыми карточками.
+function firstTransferId() {
+  const fresh = 'tr_first_' + Math.random().toString(36).slice(2, 10)
+  try {
+    const saved = localStorage.getItem('stand.firstTransfer')
+    if (saved) return saved
+    localStorage.setItem('stand.firstTransfer', fresh)
+  } catch {
+    // хранилище браузера недоступно (приватный режим): просто новый номер
+  }
+  return fresh
+}
+
 const OUTCOME_TEXT: Record<Outcome, { title: string; note: string; className: string }> = {
   sent: { title: 'Перевод отправлен', note: 'Деньги ушли получателю.', className: 'bg-allow-bg text-allow-ink' },
   cancelled: { title: 'Перевод отменён', note: 'Клиент прочитал предупреждение и отказался.', className: 'bg-warn-bg text-warn-ink' },
@@ -46,7 +60,7 @@ export function TransferScreen(props: {
   const scenario = SCENARIOS.find((s) => s.id === scenarioId)!
   const amountValid = Number.isFinite(amount) && amount >= 100
 
-  async function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent, transferId?: string) {
     event.preventDefault()
     if (!amountValid || busy) return
     setBusy(true)
@@ -54,7 +68,7 @@ export function TransferScreen(props: {
     setError('')
 
     const request: ScoreRequest = {
-      transfer_id: 'tr_' + Date.now().toString(36),
+      transfer_id: transferId ?? 'tr_' + Date.now().toString(36),
       lang,
       client_ref: CLIENT_REF,
       recipient: { account_id: scenario.account_id, p2p_trader_profile: scenario.p2p_trader ?? false, ...scenario.features },
@@ -113,7 +127,7 @@ export function TransferScreen(props: {
   useEffect(() => {
     if (firstTransferSent) return
     firstTransferSent = true
-    void submit({ preventDefault() {} } as React.FormEvent)
+    void submit({ preventDefault() {} } as React.FormEvent, firstTransferId())
     // eslint-disable-next-line react-hooks/exhaustive-deps -- только при первом показе
   }, [])
 

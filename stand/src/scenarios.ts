@@ -132,6 +132,14 @@ export const percent = (value: number, digits = 1) =>
 
 export const money = (value: number) => value.toLocaleString('ru-RU') + ' ₸'
 
-// Оценка 0,996 при округлении дала бы «1,00» — будто сервис уверен на все сто. Показываем «> 0,99».
+// Оценка 0,996 при округлении дала бы «1,00» — будто сервис уверен на все сто. Показываем «> 0,99»
+// (с неразрывным пробелом, чтобы знак не отрывался от числа при переносе строки).
 export const riskText = (value: number) =>
-  value >= 0.995 ? '> 0,99' : value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  value >= 0.995 ? '> 0,99' : value.toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+// Форма слова после числа: 1 перевод, 2 перевода, 5 переводов.
+export function ruForm(n: number, one: string, few: string, many: string) {
+  const mod10 = n % 10
+  const mod100 = n % 100
+  return mod10 === 1 && mod100 !== 11 ? one : mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14) ? few : many
+}

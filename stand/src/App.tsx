@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState, useSyncExternalStore } from 'react'
 import type { Alert } from '../../service/src/alerts.ts'
 import type { FlaggedAccount } from '../../service/src/store.ts'
 import { loadAlerts, loadFlagged, type IncomingRequest, type IncomingResponse, type ScoreRequest, type ScoreResponse } from './api.ts'
 import { DutyPanel } from './DutyPanel.tsx'
 import { ExportPanel } from './ExportPanel.tsx'
 import { Metrics } from './Metrics.tsx'
-import { NetworkPage } from './network/NetworkPage.tsx'
+import { EXAMPLE_SIGNAL } from './network/look.ts'
 import { ACTION_LABELS, money, riskText } from './scenarios.ts'
 import { ScorePanel } from './ScorePanel.tsx'
 import { TransferScreen } from './TransferScreen.tsx'
@@ -13,6 +13,9 @@ import { TransferScreen } from './TransferScreen.tsx'
 const CONTAINER = 'mx-auto max-w-[1180px] px-4 sm:px-6'
 
 const CONTAINER_WIDE = 'mx-auto max-w-[1640px] px-4 sm:px-6'
+
+// Расследование сети с графом D3 грузится отдельно, только когда его открывают: первая страница легче.
+const NetworkPage = lazy(() => import('./network/NetworkPage.tsx').then((m) => ({ default: m.NetworkPage })))
 
 // Две вкладки стенда: путь перевода и расследование сети (#network/<счёт, клиент или алерт>).
 const useHash = () =>
@@ -46,7 +49,9 @@ export function App() {
         </header>
         <main className="min-h-[70vh] bg-field">
           {/* key: переход по другой ссылке #network/… начинает новое расследование */}
-          <NetworkPage key={ref} initial={ref || null} />
+          <Suspense fallback={<p className={CONTAINER_WIDE + ' py-10 text-ink-2'}>Загружаем расследование…</p>}>
+            <NetworkPage key={ref} initial={ref || null} />
+          </Suspense>
         </main>
       </>
     )
@@ -110,7 +115,7 @@ function TransferStand() {
                 <a href="#demo" className="rounded-full bg-white px-6 py-3 text-[15px] font-semibold text-navy hover:bg-white/90">
                   Сделать перевод
                 </a>
-                <a href="#network" className="rounded-full px-6 py-3 text-[15px] font-semibold text-white ring-1 ring-white/30 hover:ring-white/60">
+                <a href={'#network/' + EXAMPLE_SIGNAL} className="rounded-full px-6 py-3 text-[15px] font-semibold text-white ring-1 ring-white/30 hover:ring-white/60">
                   Открыть расследование сети
                 </a>
               </div>
@@ -160,13 +165,36 @@ function TransferStand() {
           </Step>
         </div>
 
-        <section className={CONTAINER + ' pb-8'}>
+        <section className={CONTAINER + ' pb-20'}>
           <div className="border-t border-ink pt-12">
             <h2 className="mb-10 max-w-[20ch] text-[30px] leading-[1.15] font-bold sm:text-[36px]">Насколько хорошо это работает</h2>
             <Metrics />
           </div>
         </section>
       </main>
+
+      <footer className="bg-navy text-white/70">
+        <div className={CONTAINER + ' flex flex-col gap-6 py-10 text-[14px] sm:flex-row sm:items-start sm:justify-between'}>
+          <div className="max-w-[58ch]">
+            <p className="text-[15px] font-semibold text-white">Оценка получателя перевода</p>
+            <p className="mt-1.5">
+              Проект для FINTECH CASE Банка ЦентрКредит. Данные синтетические: клиенты, счета и переводы на стенде вымышлены, сервис
+              ничего не блокирует по-настоящему.
+            </p>
+          </div>
+          <nav aria-label="Ссылки проекта" className="flex flex-col gap-2 sm:items-end">
+            <a href="https://github.com/olegv768/bcc-hack" className="font-semibold text-white underline-offset-4 hover:underline">
+              Код и документация
+            </a>
+            <a href="/api/openapi.yaml" className="font-semibold text-white underline-offset-4 hover:underline">
+              Описание API (OpenAPI)
+            </a>
+            <a href={'#network/' + EXAMPLE_SIGNAL} className="font-semibold text-white underline-offset-4 hover:underline">
+              Расследование сети
+            </a>
+          </nav>
+        </div>
+      </footer>
     </>
   )
 }
