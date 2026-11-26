@@ -65,17 +65,11 @@ export function Metrics() {
         />
       </div>
 
-      <p className="max-w-[72ch] text-[15px] text-ink-2">
-        Проверка на {count(all.fraud.total)} мошеннических и {count(all.honest.total)} честных переводах на счета, которых модель при
-        обучении не видела. Данные синтетические: счета и переводы создаёт наш генератор, поэтому числа показывают, как сервис справляется
-        с заложенными нами случаями, а не качество на данных банка.
+      <p className="max-w-[72ch] text-[17px] leading-relaxed">
+        Сервис замечает <b>{percent(all.fraud.hold + all.fraud.warn)}</b> мошеннических переводов: <b>{percent(all.fraud.hold)}</b>{' '}
+        приостанавливает, ещё {percent(all.fraud.warn)} — предупреждение клиенту, пропускает {percent(missed(all))}. Честных переводов зря
+        беспокоит {percent(bothered(all))}.
       </p>
-
-      <dl className="grid gap-x-12 gap-y-8 border-y border-line py-8 sm:grid-cols-3">
-        <BankFigure value={percent(all.fraud.hold_amount, 0)} label="суммы мошеннических переводов сервис приостановил бы" />
-        <BankFigure value={percent(all.fraud.warn_amount, 0)} label="суммы ушло бы под предупреждение: часть клиентов отменит перевод сама" />
-        <BankFigure value={`${per(bothered(all), 10000)} из 10 000`} label="честных переводов сервис побеспокоит зря" />
-      </dl>
 
       <BusinessCase />
 
@@ -300,14 +294,5 @@ function Share(props: { value: number; caught: boolean; className: string }) {
         <span className="min-w-[3ch]">{percent(props.value, 0)}</span>
       </span>
     </td>
-  )
-}
-
-function BankFigure(props: { value: string; label: string }) {
-  return (
-    <div>
-      <dd className="tabular font-display text-[34px] leading-tight font-semibold">{props.value}</dd>
-      <dt className="mt-1 text-[15px] text-ink-2">{props.label}</dt>
-    </div>
   )
 }
